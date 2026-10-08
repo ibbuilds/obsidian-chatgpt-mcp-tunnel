@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { connect } from "node:net";
 import { validateClientExecutable } from "./binaries";
+import { probeVaultMcp } from "./mcp-probe";
 import { probeLocalHttp } from "./network";
 import type { ConnectionSnapshot, ConnectionState, TunnelSettings } from "./types";
 import { hasValidConfiguration, parseLocalMcpEndpoint } from "./validation";
@@ -185,29 +186,36 @@ export class TunnelManager {
     await validateClientExecutable(config.clientPath);
     const endpoint = parseLocalMcpEndpoint(config.mcpUrl);
     if (!endpoint) throw new Error("Only local MCP servers are permitted.");
-    const host = endpoint.hostname.replace(/^\[/, "").replace(/\]$/, "");
-    if (!(await portOpen(host, Number(endpoint.port)))) {
+
+    // Check protocol identity, not just whether a process occupies the port.
+    const result = await probeVaultMcp(config.mcpUrl);
+    if (result === "unavailable") {
       this.update("waiting-for-obsidian", "Waiting for Vault as MCP on port " + endpoint.port);
       return;
     }
+    if (result === "unexpected-server") {
+      this.retryAt = Date.now() + 15_000;
+      this.update("error", "The MCP endpoint does not identify as Vault as MCP.");
+      return;
+    }
 
-    const localStatus = await probeLocalHttp(endpoint);
-    const needsToken = localStatus === 401 || localStatus === 403;
-    if (needsToken && !(await this.secrets.hasMcpToken())) {
+    const tokenSaved = await this.secrets.hasMcpToken();
+    if (result === "authentication-required" && !tokenSaved) {
       this.update("not-configured", "Vault as MCP requires a bearer token (Advanced settings)");
       return;
     }
 
-    const mcpToken = (await this.secrets.hasMcpToken())
-      ? await this.secrets.readMcpToken()
-      : undefined;
-    if (needsToken && mcpToken) {
-      const authorized = await probeLocalHttp(endpoint, 1_500, {
-        Authorization: "Bearer " + mcpToken,
-      });
-      if (authorized === 401 || authorized === 403) {
+    const mcpToken = tokenSaved ? await this.secrets.readMcpToken() : undefined;
+    if (result === "authentication-required" && mcpToken) {
+      const authenticated = await probeVaultMcp(config.mcpUrl, mcpToken);
+      if (authenticated !== "ready") {
         this.retryAt = Date.now() + 30_000;
-        this.update("error", "Invalid Vault as MCP token. Update it in Advanced settings.");
+        this.update(
+          "error",
+          authenticated === "authentication-required"
+            ? "Invalid Vault as MCP token. Update it in Advanced settings."
+            : "The local MCP server could not be verified.",
+        );
         return;
       }
     }
