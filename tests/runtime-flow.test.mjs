@@ -23,7 +23,7 @@ try {
 const config = { clientPath: "C:\\OpenAI\\tunnel-client.exe", tunnelId: "tunnel_" + "a".repeat(32), mcpUrl: "http://127.0.0.1:8765/mcp", autoConnect: true };
 function deferred() { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; }
 const settle = () => new Promise(resolve => setImmediate(resolve));
-function fixture(overrides = {}) {
+function fixture(overrides = {}, preferences = {}) {
   let now = 1000, health = 200;
   const children = [], states = [], stopped = [];
   const secrets = { hasKey: async () => true, readKey: async () => "sk-fake-key-for-test-only", hasMcpToken: async () => false, readMcpToken: async () => "local-test-token" };
@@ -38,7 +38,7 @@ function fixture(overrides = {}) {
     now: () => now, ...overrides,
   };
   let manager;
-  manager = new TunnelManager(() => ({ ...config }), secrets, () => states.push(manager.snapshot), services);
+  manager = new TunnelManager(() => ({ ...config, ...preferences }), secrets, () => states.push(manager.snapshot), services);
   return { manager, children, states, stopped, secrets, clock: n => now += n, health: n => health = n };
 }
 
@@ -128,4 +128,56 @@ test("owned child shutdown waits for actual process exit", { timeout: 15_000 }, 
   await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
   try { await stopOwnedProcess(child); assert.ok(child.exitCode !== null || child.signalCode !== null); }
   finally { if (child.exitCode === null && child.signalCode === null) child.kill(); }
+});
+
+
+test("disabled automatic start remains idle until user explicitly connects", async () => {
+  const f = fixture({}, { autoConnect: false });
+  f.manager.begin();
+  await settle();
+  assert.equal(f.children.length, 0);
+  assert.equal(f.manager.snapshot.state, "stopped");
+  await f.manager.connectNow();
+  assert.equal(f.children.length, 1);
+  await f.manager.disconnect(); f.manager.dispose();
+});
+
+test("local Vault as MCP starting late is handled without a second process", async () => {
+  let available = false;
+  const f = fixture({ probe: async () => available ? "ready" : "unavailable" });
+  f.manager.begin();
+  await settle();
+  assert.equal(f.manager.snapshot.state, "waiting-for-obsidian");
+  assert.equal(f.children.length, 0);
+  available = true;
+  await f.manager.tick();
+  assert.equal(f.children.length, 1);
+  await f.manager.connectNow();
+  assert.equal(f.children.length, 1, "An already-running client must not be duplicated");
+  await f.manager.disconnect(); f.manager.dispose();
+});
+
+test("an invalid local bearer token blocks startup without automatic hammering", async () => {
+  const f = fixture({ probe: async () => "authentication-required" });
+  f.secrets.hasMcpToken = async () => true;
+  await f.manager.connectNow();
+  assert.equal(f.manager.snapshot.state, "error");
+  assert.match(f.manager.snapshot.detail, /local MCP token.*rejected/i);
+  assert.equal(f.manager.snapshot.retryAt, undefined);
+  assert.equal(f.children.length, 0);
+  f.clock(60_000);
+  await f.manager.tick();
+  assert.equal(f.children.length, 0);
+  f.manager.dispose();
+});
+
+test("simultaneous Connect actions never create overlapping tunnel processes", async () => {
+  const f = fixture();
+  await Promise.all([
+    f.manager.connectNow(),
+    f.manager.connectNow(),
+    f.manager.connectNow(),
+  ]);
+  assert.equal(f.children.length, 1);
+  await f.manager.disconnect(); f.manager.dispose();
 });
