@@ -195,6 +195,8 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     if (!isValidTunnelId(tunnelId)) throw new Error("Paste the complete Tunnel ID from OpenAI Platform.");
     await this.enqueue(async () => {
       if (!key.trim() && !(await this.secrets.hasKey())) throw new Error("Add a runtime API key to continue.");
+      // Re-saving unchanged details should never disrupt a healthy connection.
+      if (!key.trim() && this.settings.tunnelId === tunnelId.trim()) return;
       // Cancel pending preflight as well as an already-running process.
       await this.manager.disconnect();
       if (key.trim()) await this.secrets.saveKey(key.trim());
@@ -206,6 +208,8 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   async saveLocal(endpoint: string, token: string): Promise<void> {
     if (!parseLocalMcpEndpoint(endpoint)) throw new Error("Use a local HTTP address such as http://127.0.0.1:8765/mcp.");
     await this.enqueue(async () => {
+      // A no-op save must not interrupt the running tunnel.
+      if (endpoint.trim() === this.settings.mcpUrl && !token.trim()) return;
       const resume = this.manager.activeSession;
       await this.manager.disconnect();
       if (token.trim()) await this.secrets.saveMcpToken(token.trim());
