@@ -20,18 +20,13 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Unit tests
         run: npm test
       - name: TypeScript
         run: npm run typecheck
       - name: Production bundle
         run: npm run bundle
-      - name: Export reviewed lockfile
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          node -e "const fs=require('fs');console.log('LOCKFILE_JSON_BEGIN'+JSON.stringify(JSON.parse(fs.readFileSync('package-lock.json','utf8')))+'LOCKFILE_JSON_END')"
       - name: Official Windows client smoke test
         if: matrix.os == 'windows-latest'
         run: npm run smoke:client
