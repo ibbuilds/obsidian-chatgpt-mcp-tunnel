@@ -7,7 +7,8 @@ import {
   type ButtonComponent,
   type TextComponent,
 } from "obsidian";
-import { installOfficialClient, validateClientExecutable, type InstallProgress } from "./installer";
+import { validateClientExecutable } from "./binaries";
+import { installOfficialClient, type InstallProgress } from "./installer";
 import { TunnelManager } from "./manager";
 import { inspectVaultAsMcp } from "./prerequisites";
 import { DEFAULT_SETTINGS, type TunnelSettings } from "./types";
