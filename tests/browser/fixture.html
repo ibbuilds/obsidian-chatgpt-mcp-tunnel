@@ -1,4 +1,4 @@
-<!DOCTYPE html><meta charset="utf-8"><title>Popover interaction fixture</title>
+<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Popover interaction fixture</title>
 <style>
 :root{
  --background-primary:#202020;--background-secondary:#262626;--background-modifier-border:#3b3b3b;--background-modifier-hover:#2d2d2d;--text-normal:#dedede;--text-muted:#ababab;--text-faint:#818181;--text-success:#62bc86;--text-accent:#ac92ef;--text-error:#e98282;
@@ -27,7 +27,7 @@ window.host = {
  installClient:async(progress)=>{progress('Downloading…');window.facts.client=true;},
  chooseClient:async()=>{window.facts.client=true;return true;},
  saveAccount:async(id,key)=>{if(window.failSave)throw new Error('Windows could not save the key. Try again.');host.settings.tunnelId=id;window.facts.key=true;},
- saveLocal:async()=>{},setAutoConnect:async(value)=>{host.settings.autoConnect=value;},
+ saveLocal:async(endpoint,token)=>{host.settings.mcpUrl=endpoint;if(token)window.facts.token=true;},setAutoConnect:async(value)=>{host.settings.autoConnect=value;},
  acknowledgeChatgpt:async()=>{host.settings.chatgptLinked=true;},
  connect:async()=>{host.snapshot={state:'connected',detail:'Tunnel ready',managed:true};window.pop?.updateConnection();},
  disconnect:()=>{host.snapshot={state:'stopped',detail:'Stopped manually',managed:false};window.pop?.updateConnection();},
@@ -38,5 +38,4 @@ function toggle(){if(pop?.isOpen)pop.close(true);else {pop=window.pop=new Connec
 trigger.addEventListener('click',toggle);trigger.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
 window.reset = (screen)=>{pop?.close(false);window.facts={client:screen!=='client',key:['home','chatgpt'].includes(screen),vault:'running',token:false};host.settings.tunnelId=['home','chatgpt'].includes(screen)?'tunnel_0123456789abcdef0123456789abcdef':'';host.settings.chatgptLinked=screen==='home';host.snapshot={state:screen==='home'?'connected':'not-configured',detail:screen==='home'?'Tunnel ready':'Complete setup to connect',managed:screen==='home'};};
 </script>
-
 <script>/*ASSERTIONS*/</script>
