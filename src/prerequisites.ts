@@ -7,6 +7,7 @@ export const VAULT_MCP_ID = "vault-as-mcp";
 export interface VaultMcpStatus {
   installed: boolean;
   endpointResponding: boolean;
+  authenticationRequired: boolean;
 }
 
 /**
@@ -21,5 +22,9 @@ export async function inspectVaultAsMcp(app: App, endpoint: string): Promise<Vau
   const installed = await app.vault.adapter.exists(manifest);
   const url = parseLocalMcpEndpoint(endpoint);
   const status = url ? await probeLocalHttp(url) : null;
-  return { installed, endpointResponding: status !== null };
+  return {
+    installed,
+    endpointResponding: status !== null,
+    authenticationRequired: status === 401 || status === 403,
+  };
 }
