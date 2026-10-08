@@ -1,7 +1,7 @@
 {
   "id": "chatgpt-mcp-tunnel",
   "name": "ChatGPT MCP Tunnel",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "minAppVersion": "1.13.0",
   "description": "Connect Obsidian to ChatGPT through a compact status-bar popover and automatic secure MCP tunnel.",
   "author": "ibbuilds",
