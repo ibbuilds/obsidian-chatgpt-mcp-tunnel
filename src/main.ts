@@ -8,10 +8,9 @@ import {
 import { join, sep } from "node:path";
 import { ConnectionModal } from "./connection-modal";
 import { discoverExistingClient } from "./discovery";
-import { localDataDirectory } from "./windows";
 import { TunnelManager } from "./manager";
 import { DEFAULT_SETTINGS, type ConnectionState, type TunnelSettings } from "./types";
-import { WindowsSecretStore } from "./windows";
+import { localDataDirectory, WindowsSecretStore } from "./windows";
 
 function stateLabel(state: ConnectionState): string {
   switch (state) {
@@ -123,7 +122,11 @@ export default class ChatGptMcpTunnel extends Plugin {
    * A missing saved path does not imply that the executable isn't installed.
    */
   async ensureClientDetected(force = false): Promise<string | null> {
-    if (this.detectionPromise) return this.detectionPromise;
+    if (this.detectionPromise) {
+      const ongoing = await this.detectionPromise;
+      if (!force || ongoing) return ongoing;
+      // A manual Detect click can expand the search after a startup-only scan.
+    }
     if (this.detectionAttempted && !force) {
       return this.detectionResult;
     }
