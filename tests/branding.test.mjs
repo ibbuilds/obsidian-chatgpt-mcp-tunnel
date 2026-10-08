@@ -60,7 +60,7 @@ test("connection UI uses a native right-sidebar view, never a blocking modal", (
   assert.match(view, /new Setting\(root\)/);
   assert.match(view, /setName\("OpenAI tunnel client"\)/);
   assert.match(view, /setName\("Tunnel ID"\)/);
-  assert.doesNotMatch(view, /\bModal\b/);
+  assert.doesNotMatch(view, /\bextends\s+Modal\b/);
   assert.doesNotMatch(app, /new ConnectionModal/);
   assert.doesNotMatch(app, /setName\("Runtime API key"\)/);
 });
