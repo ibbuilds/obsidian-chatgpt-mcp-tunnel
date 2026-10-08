@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 const SAVE_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
 $inputText = [Console]::In.ReadToEnd()
 $plain = [System.Text.Encoding]::UTF8.GetBytes($inputText)
 try {
@@ -20,6 +21,7 @@ try {
 `;
 const LOAD_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Security
 $data = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim())
 $plain = [System.Security.Cryptography.ProtectedData]::Unprotect(
   $data,
