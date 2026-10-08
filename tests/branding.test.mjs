@@ -37,7 +37,7 @@ test("renamed plugin keeps the original encrypted Windows secrets accessible", (
 
   assert.match(win, /"ObsidianMcpTunnel"/);
   assert.match(readme, /\.obsidian\/plugins\/chatgpt-mcp-tunnel\//);
-  assert.match(readme, /Upgrade from v0\.3\.0/);
+  assert.match(readme, /Upgrading from v0\.3\.0/);
   assert.match(readme, /obsidian-chatgpt-mcp-tunnel\.git/);
 });
 
