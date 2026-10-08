@@ -1,35 +1,60 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
 import { connect } from "node:net";
-import { join } from "node:path";
 import { validateClientExecutable } from "./binaries";
+import { probeVaultMcp } from "./mcp-probe";
 import { probeLocalHttp } from "./network";
 import type { ConnectionSnapshot, ConnectionState, TunnelSettings } from "./types";
-import { hasValidConfiguration, parseHealthBaseUrl, parseLocalMcpEndpoint } from "./validation";
-import { localDataDirectory, type WindowsSecretStore } from "./windows";
+import { hasValidConfiguration, parseLocalMcpEndpoint } from "./validation";
+import type { WindowsSecretStore } from "./windows";
 
-const POLL_INTERVAL_MS = 3_000;
-const RESTART_MAX_MS = 60_000;
-const EXTERNAL_HEALTH = new URL("http://127.0.0.1:8080/healthz");
+const POLL_MS = 3_000;
+const MAX_RETRY_MS = 60_000;
+const MANAGED_HEALTH = new URL("http://127.0.0.1:8766/");
+const FOREGROUND_HEALTH = new URL("http://127.0.0.1:8080/");
 
-async function isPortListening(host: string, port: number): Promise<boolean> {
+async function portOpen(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = connect({ host, port });
     let settled = false;
-    const finish = (result: boolean): void => {
+    const finish = (open: boolean): void => {
       if (settled) return;
       settled = true;
       socket.destroy();
-      resolve(result);
+      resolve(open);
     };
     socket.once("connect", () => finish(true));
     socket.once("error", () => finish(false));
-    socket.setTimeout(1200, () => finish(false));
+    socket.setTimeout(1_200, () => finish(false));
   });
 }
 
-/** Own only subprocesses launched by this plugin. Never terminate an external runtime. */
+/**
+ * Stop the complete process tree on Windows; the official client starts
+ * cloudflared.exe as a child. Only use a PID owned by this manager.
+ */
+function stopChildTree(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform !== "win32" || !child.pid) {
+    child.kill();
+    return;
+  }
+
+  const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+    windowsHide: true,
+    detached: true,
+    stdio: "ignore",
+  });
+  killer.once("error", () => child.kill());
+  killer.once("exit", (code) => {
+    if (code !== 0 && child.exitCode === null) child.kill();
+  });
+  killer.unref();
+}
+
+/**
+ * One managed tunnel per workstation. The fixed loopback health port makes
+ * duplicates and orphaned runtimes detectable after a crash or vault switch.
+ */
 export class TunnelManager {
   private child: ChildProcess | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -39,8 +64,6 @@ export class TunnelManager {
   private paused = false;
   private retryAt = 0;
   private failures = 0;
-  private healthFile: string | null = null;
-  private healthUrl: URL | null = null;
 
   private current: ConnectionSnapshot = {
     state: "stopped",
@@ -58,12 +81,11 @@ export class TunnelManager {
     return { ...this.current };
   }
 
-  private update(state: ConnectionState, detail: string): void {
-    const dashboardUrl = this.healthUrl ? new URL("/ui", this.healthUrl).toString() : undefined;
+  private update(state: ConnectionState, detail: string, showDashboard = false): void {
     const next: ConnectionSnapshot = {
       state,
       detail,
-      dashboardUrl,
+      dashboardUrl: showDashboard ? new URL("/ui", MANAGED_HEALTH).toString() : undefined,
       managed: this.child !== null,
     };
     if (JSON.stringify(next) !== JSON.stringify(this.current)) {
@@ -74,7 +96,7 @@ export class TunnelManager {
 
   begin(): void {
     if (this.timer || this.disposed) return;
-    this.timer = setInterval(() => void this.tick(), POLL_INTERVAL_MS);
+    this.timer = setInterval(() => void this.tick(), POLL_MS);
     void this.tick();
   }
 
@@ -89,9 +111,8 @@ export class TunnelManager {
     this.retryAt = Number.POSITIVE_INFINITY;
     const child = this.child;
     this.child = null;
-    this.healthUrl = null;
-    if (child) child.kill();
-    this.update("stopped", "Stopped");
+    if (child) stopChildTree(child);
+    this.update("stopped", "Stopped manually");
   }
 
   dispose(): void {
@@ -99,7 +120,6 @@ export class TunnelManager {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.disconnect();
-    if (this.healthFile) void rm(this.healthFile, { force: true });
   }
 
   private async tick(): Promise<void> {
@@ -120,33 +140,21 @@ export class TunnelManager {
 
   private async checkHealth(): Promise<void> {
     if (!this.child || this.disposed) return;
-    if (!this.healthUrl && this.healthFile) {
-      try {
-        const value = await readFile(this.healthFile, "utf8");
-        this.healthUrl = parseHealthBaseUrl(value);
-      } catch {
-        // The tunnel writes this file after its health listener starts.
-      }
-    }
-    if (!this.healthUrl) {
-      this.update("starting", "Waiting for tunnel-client");
-      return;
-    }
-    const code = await probeLocalHttp(new URL("/readyz", this.healthUrl));
+    const code = await probeLocalHttp(new URL("/readyz", MANAGED_HEALTH));
+    if (!this.child || this.disposed) return;
     if (code === 200) {
       this.failures = 0;
-      this.update("connected", "Tunnel ready");
+      this.update("connected", "Tunnel ready", true);
     } else if (code === 503) {
-      this.update("connecting", "Waiting for tunnel readiness");
+      this.update("connecting", "Waiting for the tunnel to become ready", true);
     } else {
-      this.update("connecting", "Checking local tunnel status");
+      this.update("connecting", "Starting the local tunnel health service", true);
     }
   }
 
   private async start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
     if (this.child || this.disposed) return;
-
     this.startPromise = this.startInner()
       .catch((error: unknown) => {
         this.scheduleRetry();
@@ -160,7 +168,7 @@ export class TunnelManager {
   }
 
   private scheduleRetry(): void {
-    const delay = Math.min(RESTART_MAX_MS, 4_000 * 2 ** Math.min(this.failures++, 4));
+    const delay = Math.min(MAX_RETRY_MS, 4_000 * 2 ** Math.min(this.failures++, 4));
     this.retryAt = Date.now() + delay;
   }
 
@@ -171,71 +179,121 @@ export class TunnelManager {
       return;
     }
     if (!(await this.secrets.hasKey())) {
-      this.update("not-configured", "Save a runtime API key");
+      this.update("not-configured", "Save the runtime API key");
       return;
     }
+
     await validateClientExecutable(config.clientPath);
+    const endpoint = parseLocalMcpEndpoint(config.mcpUrl);
+    if (!endpoint) throw new Error("Only local MCP servers are permitted.");
 
-    const target = parseLocalMcpEndpoint(config.mcpUrl);
-    if (!target) throw new Error("Only local MCP servers are permitted.");
-    const host = target.hostname.replace(/^\[/, "").replace(/\]$/, "");
-    if (!(await isPortListening(host, Number(target.port)))) {
-      this.update("waiting-for-obsidian", "Waiting for Vault as MCP on port " + target.port);
+    // Check protocol identity, not just whether a process occupies the port.
+    const result = await probeVaultMcp(config.mcpUrl);
+    if (result === "unavailable") {
+      this.update("waiting-for-obsidian", "Waiting for Vault as MCP on port " + endpoint.port);
+      return;
+    }
+    if (result === "unexpected-server") {
+      this.retryAt = Date.now() + 15_000;
+      this.update("error", "The MCP endpoint does not identify as Vault as MCP.");
       return;
     }
 
-    // Manual foreground clients usually bind :8080. Avoid a duplicate tunnel.
-    if (await probeLocalHttp(EXTERNAL_HEALTH) === 200) {
-      this.update("existing-runtime", "An existing tunnel client is using port 8080");
+    const tokenSaved = await this.secrets.hasMcpToken();
+    if (result === "authentication-required" && !tokenSaved) {
+      this.update("not-configured", "Vault as MCP requires a bearer token (Advanced settings)");
       return;
     }
 
-    this.update("starting", "Starting tunnel");
+    const mcpToken = tokenSaved ? await this.secrets.readMcpToken() : undefined;
+    if (result === "authentication-required" && mcpToken) {
+      const authenticated = await probeVaultMcp(config.mcpUrl, mcpToken);
+      if (authenticated !== "ready") {
+        this.retryAt = Date.now() + 30_000;
+        this.update(
+          "error",
+          authenticated === "authentication-required"
+            ? "Invalid Vault as MCP token. Update it in Advanced settings."
+            : "The local MCP server could not be verified.",
+        );
+        return;
+      }
+    }
+
+    // Only the managed health port is reserved. Other applications on :8080
+    // must not prevent an otherwise independent local tunnel from running.
+    if (await portOpen(MANAGED_HEALTH.hostname, Number(MANAGED_HEALTH.port))) {
+      const healthy = await probeLocalHttp(new URL("/healthz", MANAGED_HEALTH));
+      this.update(
+        healthy === 200 ? "existing-runtime" : "error",
+        healthy === 200
+          ? "Another managed tunnel is already running. Stop it before connecting."
+          : "Port 8766 is already occupied by another application.",
+      );
+      return;
+    }
+
+    // Recognize, but never touch, a foreground OpenAI client on :8080.
+    const foregroundHealthy = await probeLocalHttp(new URL("/healthz", FOREGROUND_HEALTH));
+    if (foregroundHealthy === 200) {
+      const foregroundReady = await probeLocalHttp(new URL("/readyz", FOREGROUND_HEALTH));
+      if (foregroundReady === 200 || foregroundReady === 503) {
+        this.update(
+          "existing-runtime",
+          "An OpenAI tunnel is running on port 8080. Stop it before automatic management.",
+        );
+        return;
+      }
+    }
+
+    this.update("starting", "Starting the tunnel");
     const runtimeKey = await this.secrets.readKey();
-    const runtimeDir = join(localDataDirectory(), "runtime");
-    await mkdir(runtimeDir, { recursive: true });
-    const healthFile = join(runtimeDir, "health-" + randomUUID() + ".url");
-
     if (this.disposed || this.paused) return;
-    this.healthFile = healthFile;
-    this.healthUrl = null;
+
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CONTROL_PLANE_API_KEY: runtimeKey,
+      CONTROL_PLANE_TUNNEL_ID: config.tunnelId.trim(),
+      MCP_SERVER_URL: config.mcpUrl,
+      CLOUDFLARED_MANAGED: "true",
+      OPEN_WEB_UI: "false",
+    };
+    // Explicitly bound official behavior; do not accidentally inherit another
+    // program's tunnel profiles, proxy targets, admin key or MCP headers.
+    for (const name of [
+      "MCP_EXTRA_HEADERS",
+      "MCP_DISCOVERY_EXTRA_HEADERS",
+      "TUNNEL_CLIENT_CONFIG",
+      "TUNNEL_CLIENT_PROFILE",
+      "TUNNEL_CLIENT_PROFILE_FILE",
+      "CLOUDFLARED_PATH",
+      "CLOUDFLARED_TUNNEL_TOKEN",
+      "OPENAI_ADMIN_KEY",
+    ]) delete env[name];
+    if (mcpToken) env.MCP_EXTRA_HEADERS = "Authorization: Bearer " + mcpToken;
+
     const child = spawn(
       config.clientPath,
-      [
-        "run",
-        "--health.listen-addr=127.0.0.1:0",
-        "--health.url-file=" + healthFile,
-        "--log.level=warn",
-      ],
-      {
-        windowsHide: true,
-        stdio: "ignore",
-        env: {
-          ...process.env,
-          CONTROL_PLANE_API_KEY: runtimeKey,
-          CONTROL_PLANE_TUNNEL_ID: config.tunnelId.trim(),
-          MCP_SERVER_URL: config.mcpUrl,
-          OPEN_WEB_UI: "false",
-        },
-      },
+      ["run", "--health.listen-addr=127.0.0.1:8766", "--log.level=warn"],
+      { windowsHide: true, stdio: "ignore", env },
     );
     if (this.disposed || this.paused) {
-      child.kill();
+      stopChildTree(child);
       return;
     }
+
     this.child = child;
     this.retryAt = 0;
-    this.update("connecting", "Tunnel client started");
-    child.once("error", () => this.onExit(child, "Unable to launch tunnel-client.exe"));
-    child.once("close", (code) => this.onExit(child, "Tunnel exited" + (code === null ? "" : " (code " + code + ")")));
+    this.update("connecting", "Tunnel process launched", true);
+    child.once("error", () => this.onExit(child, "Unable to start the tunnel client"));
+    child.once("close", (code) =>
+      this.onExit(child, "Tunnel exited" + (code === null ? "" : " (code " + code + ")")),
+    );
   }
 
   private onExit(child: ChildProcess, reason: string): void {
     if (this.child !== child) return;
     this.child = null;
-    this.healthUrl = null;
-    if (this.healthFile) void rm(this.healthFile, { force: true });
-    this.healthFile = null;
     if (this.disposed || this.paused) {
       this.update("stopped", "Stopped");
       return;

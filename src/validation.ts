@@ -1,4 +1,5 @@
-const TUNNEL_ID = /^tunnel_[0-9a-f]{32}$/;
+// OpenAI accepts lowercase alphanumeric tunnel IDs and optional 4-character namespaces.
+const TUNNEL_ID = /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]"]);
 
 export function isValidTunnelId(value: string): boolean {
@@ -12,7 +13,7 @@ export function parseLocalMcpEndpoint(value: string): URL | null {
     if (
       url.protocol !== "http:" ||
       !LOOPBACK_HOSTS.has(url.hostname) ||
-      !url.port ||
+      !url.port || Number(url.port) < 1 ||
       url.pathname !== "/mcp" ||
       url.username ||
       url.password ||
@@ -34,7 +35,7 @@ export function parseHealthBaseUrl(value: string): URL | null {
     if (
       url.protocol !== "http:" ||
       !LOOPBACK_HOSTS.has(url.hostname) ||
-      !url.port ||
+      !url.port || Number(url.port) < 1 ||
       url.username ||
       url.password ||
       url.search ||

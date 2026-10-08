@@ -9,10 +9,12 @@ import {
 
 const id = "tunnel_" + "a".repeat(32);
 
-test("accepts only tunnel IDs with 32 lowercase hex characters", () => {
+test("accepts lowercase alphanumeric and namespaced OpenAI tunnel IDs", () => {
   assert.equal(isValidTunnelId(id), true);
   assert.equal(isValidTunnelId(" " + id + " "), true);
-  for (const value of ["tunnel_123", "TUNNEL_" + "a".repeat(32), "tunnel_" + "z".repeat(32)]) {
+  assert.equal(isValidTunnelId("tunnel_a1b2_" + "z".repeat(32)), true);
+  assert.equal(isValidTunnelId("tunnel_" + "z".repeat(32)), true);
+  for (const value of ["tunnel_123", "TUNNEL_" + "a".repeat(32), "tunnel_" + "#".repeat(32), "tunnel_abc_" + "a".repeat(32), "tunnel_ABCDE_" + "a".repeat(32)]) {
     assert.equal(isValidTunnelId(value), false);
   }
 });

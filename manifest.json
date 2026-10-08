@@ -1,7 +1,7 @@
 {
   "id": "obsidian-mcp-tunnel",
   "name": "MCP Tunnel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.13.0",
   "description": "Set up and automatically manage a secure ChatGPT MCP tunnel for Vault as MCP.",
   "author": "ibbuilds",
