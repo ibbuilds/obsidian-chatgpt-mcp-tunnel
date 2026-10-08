@@ -67,6 +67,12 @@ Node.js 22+ is only needed when building from source.
 
 Disable the previous plugin, close Obsidian and rename the old `obsidian-mcp-tunnel` directory to `chatgpt-mcp-tunnel`. Keep its `data.json`. Windows encrypted credentials remain in `%LOCALAPPDATA%\ObsidianMcpTunnel` and are reused.
 
+## Troubleshooting a failed startup
+
+**The plugin runs tunnel-client.exe for you. Do not start it in PowerShell.** If the client exits with a nonzero code, the plugin captures a bounded amount of stdout/stderr in memory, classifies common failures, and displays a safe, actionable message in the ChatGPT popover. The raw client output is **not** written to Obsidian data, its vault, or the console, and is never shown verbatim because it may contain credentials.
+
+For example, an invalid or unauthorized OpenAI runtime key, an old unsupported executable, a blocked cloudflared.exe, and a busy local health port receive distinct messages. Update the plugin to **v0.7.1**, then click Retry. If the message still only says the cause could not be identified, share the displayed safe error message (not an API key); the remaining cause requires further diagnosis on your Windows machine. Setting the client's working directory to the location of tunnel-client.exe also fixes executable-relative file assumptions in some installations.
+
 ## Verification and limits
 
 - Unit tests cover step selection, state copy, small-window positioning, existing-client discovery, MCP identity checks and secret handling.
