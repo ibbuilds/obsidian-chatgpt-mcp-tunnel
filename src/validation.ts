@@ -1,4 +1,5 @@
-const TUNNEL_ID = /^tunnel_[0-9a-f]{32}$/;
+// OpenAI accepts lowercase alphanumeric tunnel IDs and optional 4-character namespaces.
+const TUNNEL_ID = /^tunnel_(?:[a-z0-9]{4}_)?[a-z0-9]{32}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]"]);
 
 export function isValidTunnelId(value: string): boolean {
