@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { connect } from "node:net";
+import { dirname } from "node:path";
 import { validateClientExecutable } from "./binaries";
 import { probeVaultMcp } from "./mcp-probe";
 import { probeLocalHttp } from "./network";
+import { RuntimeOutput, describeRuntimeExit, describeRuntimeSpawnError } from "./runtime-diagnostics";
 import type { ConnectionSnapshot, ConnectionState, TunnelSettings } from "./types";
 import { hasValidConfiguration, parseLocalMcpEndpoint } from "./validation";
 import type { WindowsSecretStore } from "./windows";
@@ -275,8 +277,18 @@ export class TunnelManager {
     const child = spawn(
       config.clientPath,
       ["run", "--health.listen-addr=127.0.0.1:8766", "--log.level=warn"],
-      { windowsHide: true, stdio: "ignore", env },
+      {
+        windowsHide: true,
+        cwd: dirname(config.clientPath),
+        // Capture only bounded in-memory diagnostics. Never print or persist
+        // output that may include runtime secrets or local vault contents.
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+      },
     );
+    const output = new RuntimeOutput();
+    child.stdout?.on("data", (chunk: Buffer) => output.append(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => output.append(chunk));
     if (this.disposed || this.paused) {
       stopChildTree(child);
       return;
@@ -285,9 +297,12 @@ export class TunnelManager {
     this.child = child;
     this.retryAt = 0;
     this.update("connecting", "Tunnel process launched", true);
-    child.once("error", () => this.onExit(child, "Unable to start the tunnel client"));
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      output.consume();
+      this.onExit(child, describeRuntimeSpawnError(error));
+    });
     child.once("close", (code) =>
-      this.onExit(child, "Tunnel exited" + (code === null ? "" : " (code " + code + ")")),
+      this.onExit(child, describeRuntimeExit(code, output.consume())),
     );
   }
 
@@ -299,6 +314,6 @@ export class TunnelManager {
       return;
     }
     this.scheduleRetry();
-    this.update("error", reason + ". Will retry.");
+    this.update("error", reason);
   }
 }
