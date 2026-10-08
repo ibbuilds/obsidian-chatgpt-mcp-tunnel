@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import esbuild from "esbuild";
 const dir = await mkdtemp(join(tmpdir(), "cmt-flow-tests-"));
 const require = createRequire(import.meta.url);
-let TunnelManager, clientEnvironment, stopOwnedProcess;
+let TunnelManager, clientEnvironment, stopOwnedProcess, clientLaunchArguments;
 try {
   for (const name of ["manager", "runtime-environment", "runtime-services"]) {
     const output = join(dir, name + ".cjs");
@@ -17,10 +17,20 @@ try {
     const module = require(output);
     if (name === "manager") TunnelManager = module.TunnelManager;
     if (name === "runtime-environment") clientEnvironment = module.clientEnvironment;
-    if (name === "runtime-services") stopOwnedProcess = module.stopOwnedProcess;
+    if (name === "runtime-services") {
+      stopOwnedProcess = module.stopOwnedProcess;
+      clientLaunchArguments = module.clientLaunchArguments;
+    }
   }
 } finally { await rm(dir, { recursive: true, force: true }); }
 const config = { clientPath: "C:\\OpenAI\\tunnel-client.exe", tunnelId: "tunnel_" + "a".repeat(32), mcpUrl: "http://127.0.0.1:8765/mcp", autoConnect: true };
+
+test("non-default client logging always selects a supported structured format", () => {
+  const flags = new Map(clientLaunchArguments().slice(1).map(flag => flag.split("=")));
+  if ((flags.get("--log.level") || "info") !== "info") {
+    assert.ok(["struct-text", "json"].includes(flags.get("--log.format")), "The official client rejects non-default log levels without structured logging");
+  }
+});
 function deferred() { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 function fixture(overrides = {}, preferences = {}) {
@@ -77,6 +87,18 @@ test("bad credentials stop automatic retry instead of hammering the service", as
   assert.equal(f.manager.snapshot.state, "error"); assert.equal(f.manager.snapshot.retryAt, undefined);
   assert.doesNotMatch(f.manager.snapshot.detail, /DO_NOT_DISPLAY/);
   f.clock(120_000); await f.manager.tick(); assert.equal(f.children.length, 1); f.manager.dispose();
+});
+
+test("logging configuration failures explain the launcher problem and stop retries", async () => {
+  const f = fixture(); await f.manager.connectNow();
+  f.children[0].stderr.emit("data", Buffer.from("log level requires 'struct-text' or 'json' log format sk-DO_NOT_DISPLAY"));
+  f.children[0].emit("close", 1);
+  assert.equal(f.manager.snapshot.state, "error");
+  assert.match(f.manager.snapshot.detail, /logging settings/);
+  assert.doesNotMatch(f.manager.snapshot.detail, /DO_NOT_DISPLAY/);
+  assert.equal(f.manager.snapshot.retryAt, undefined);
+  f.clock(120_000); await f.manager.tick();
+  assert.equal(f.children.length, 1); f.manager.dispose();
 });
 
 test("transient failures back off and manual disconnect cancels the retry", async () => {
