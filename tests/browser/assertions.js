@@ -70,6 +70,13 @@
     ok(getComputedStyle(document.querySelector(".cmt-popover")).backgroundColor === "rgb(255, 255, 255)", "Light theme uses Obsidian surface variables");
     button("Close").click(); document.body.classList.remove("light");
 
+    // ChatGPT settings should be reachable even while the local runtime is offline.
+    window.reset("chatgpt");
+    host.snapshot = { state: "error", detail: "Control-plane authorization denied", managed: false };
+    trigger.click(); await settle();
+    ok(button("Open ChatGPT ↗") && !button("Open ChatGPT ↗").disabled, "ChatGPT settings link stays available when the tunnel is offline");
+    button("Close").click();
+
     const inspect = host.inspect, gate = deferred(); host.inspect = () => gate.promise;
     trigger.click(); button("Close").click(); host.inspect = inspect;
     window.reset("home"); trigger.click(); await settle(); gate.resolve({ client: false, key: false, token: false, vault: "missing" }); await settle();
