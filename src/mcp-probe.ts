@@ -25,7 +25,7 @@ export async function probeVaultMcp(endpoint: string, token?: string): Promise<V
     method: "initialize",
     params: {
       protocolVersion: "2025-06-18",
-      clientInfo: { name: "chatgpt-mcp-tunnel", version: "0.6.0" },
+      clientInfo: { name: "chatgpt-mcp-tunnel", version: "0.7.0" },
       capabilities: {},
     },
   });

@@ -1,0 +1,42 @@
+<!DOCTYPE html><meta charset="utf-8"><title>Popover interaction fixture</title>
+<style>
+:root{
+ --background-primary:#202020;--background-secondary:#262626;--background-modifier-border:#3b3b3b;--background-modifier-hover:#2d2d2d;--text-normal:#dedede;--text-muted:#ababab;--text-faint:#818181;--text-success:#62bc86;--text-accent:#ac92ef;--text-error:#e98282;
+ --interactive-accent:#9363e7;--font-interface:Arial,sans-serif;--font-ui-small:13px;--font-ui-smaller:11px;--font-ui-medium:17px;--font-semibold:600;--font-medium:500;--line-height-normal:1.5;--radius-l:10px;--radius-m:6px;--border-width:1px;--shadow-l:0 12px 42px #0005;--input-height:32px;--cursor-link:pointer;--layer-popover:600;--icon-s:16px;--icon-xs:14px;--size-2-1:2px;--size-2-2:4px;--size-2-3:6px;--size-4-1:4px;--size-4-2:8px;--size-4-3:12px;--size-4-4:16px;
+}
+body{margin:0;background:var(--background-primary);font:14px var(--font-interface);color:var(--text-normal)}
+body.light { --background-primary:#fff;--background-secondary:#f5f5f5;--background-modifier-border:#ddd;--background-modifier-hover:#eee;--text-normal:#252525;--text-muted:#696969;--text-faint:#777;--text-success:#27844a;--text-accent:#7353bb;--text-error:#b82929;--shadow-l:0 10px 30px #0002; }
+button{background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border);border-radius:5px;font:13px var(--font-interface);padding:6px 12px;min-height:30px;box-shadow:0 1px 2px #0001}button.mod-cta {background:var(--interactive-accent);color:white;border-color:transparent}button:disabled{opacity:.45;cursor:default!important}input[type=text],input[type=password]{background:var(--background-secondary);border:1px solid var(--background-modifier-border);border-radius:5px;min-height:32px;padding:6px 9px;box-sizing:border-box;font:13px var(--font-interface);color:var(--text-normal)}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:210px;background:var(--background-secondary);padding:24px;box-sizing:border-box;border-right:1px solid var(--background-modifier-border)}
+main {margin:80px auto;max-width:500px}main h1{font-size:24px} #editor{outline:none;min-height:350px;color:var(--text-muted)}
+.status-bar{position:fixed;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:6px 14px;background:var(--background-secondary);border-top:1px solid var(--background-modifier-border);border-left:1px solid var(--background-modifier-border);font-size:11px;border-top-left-radius:8px}#trigger{display:inline-flex;gap:4px;cursor:pointer;padding:2px}#trigger:focus-visible{outline:1px solid var(--interactive-accent)}.vault{color:var(--text-success)}.sidebar p{color:var(--text-muted);font-size:13px}
+</style>
+<style>/*PLUGIN_STYLE*/</style>
+<aside class="sidebar"><strong>Projects</strong><p>AI Brand</p><p>　Brand</p><p>　UI Board</p></aside>
+<main><h1>Brand</h1><div id="editor" contenteditable="true">The note remains editable. This is a browser test fixture, not the Obsidian application.</div></main>
+<div class="status-bar"><span>0 backlinks</span><span>0 words</span><span class="vault">MCP:8765 ●</span><span id="trigger" tabindex="0" role="button" aria-haspopup="dialog">♧ ChatGPT: Setup</span></div>
+<script>/*PLUGIN_BUNDLE*/
+window.ConnectionPopover=CmtUI.ConnectionPopover;</script>
+<script>
+window.facts = {client:false,key:false,vault:'running',token:false};
+window.host = {
+ settings: {clientPath:'',tunnelId:'',mcpUrl:'http://127.0.0.1:8765/mcp',autoConnect:true,chatgptLinked:false},
+ snapshot: {state:'not-configured',detail:'Complete setup to connect',managed:false},installing:false,
+ inspect: async()=>({...window.facts}),
+ findClient: async()=>{window.facts.client=true;host.settings.clientPath='C:\\OpenAI\\tunnel-client.exe';return true;},
+ installClient:async(progress)=>{progress('Downloading…');window.facts.client=true;},
+ chooseClient:async()=>{window.facts.client=true;return true;},
+ saveAccount:async(id,key)=>{if(window.failSave)throw new Error('Windows could not save the key. Try again.');host.settings.tunnelId=id;window.facts.key=true;},
+ saveLocal:async()=>{},setAutoConnect:async(value)=>{host.settings.autoConnect=value;},
+ acknowledgeChatgpt:async()=>{host.settings.chatgptLinked=true;},
+ connect:async()=>{host.snapshot={state:'connected',detail:'Tunnel ready',managed:true};window.pop?.updateConnection();},
+ disconnect:()=>{host.snapshot={state:'stopped',detail:'Stopped manually',managed:false};window.pop?.updateConnection();},
+ forgetKey:async()=>{window.facts.key=false;},forgetToken:async()=>{window.facts.token=false;}
+};
+let pop=null;const trigger=document.querySelector('#trigger');
+function toggle(){if(pop?.isOpen)pop.close(true);else {pop=window.pop=new ConnectionPopover(trigger,host,()=>pop=null);pop.open();}}
+trigger.addEventListener('click',toggle);trigger.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
+window.reset = (screen)=>{pop?.close(false);window.facts={client:screen!=='client',key:['home','chatgpt'].includes(screen),vault:'running',token:false};host.settings.tunnelId=['home','chatgpt'].includes(screen)?'tunnel_0123456789abcdef0123456789abcdef':'';host.settings.chatgptLinked=screen==='home';host.snapshot={state:screen==='home'?'connected':'not-configured',detail:screen==='home'?'Tunnel ready':'Complete setup to connect',managed:screen==='home'};};
+</script>
+
+<script>/*ASSERTIONS*/</script>

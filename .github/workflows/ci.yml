@@ -28,6 +28,9 @@ jobs:
         run: npm run typecheck
       - name: Production bundle
         run: npm run bundle
+      - name: Browser interaction checks
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:browser
       - name: Official Windows client smoke test
         # Explicit only: GitHub's unauthenticated release API is rate-limited on shared CI IPs.
         if: matrix.os == 'windows-latest' && github.event_name == 'workflow_dispatch'
