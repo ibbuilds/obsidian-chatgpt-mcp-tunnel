@@ -90,6 +90,8 @@ class TunnelSettingsTab extends PluginSettingTab {
   private credentialRow: Setting | null = null;
   private credentialInput: TextComponent | null = null;
   private clientPathInput: TextComponent | null = null;
+  private localTokenRow: Setting | null = null;
+  private localTokenInput: TextComponent | null = null;
 
   constructor(app: App, private readonly plugin: ObsidianMcpTunnel) {
     super(app, plugin);
@@ -249,6 +251,9 @@ class TunnelSettingsTab extends PluginSettingTab {
           this.credentialInput?.setValue("");
           new Notice("Runtime key saved securely");
           await this.refreshCredentialStatus();
+          // Apply a replacement key immediately rather than waiting for a restart.
+          this.plugin.manager.disconnect();
+          await this.plugin.manager.connectNow();
         } catch (error) {
           notifyFailure(error);
         }
@@ -289,6 +294,43 @@ class TunnelSettingsTab extends PluginSettingTab {
         }),
       );
     if (!this.advancedExpanded) return;
+
+    this.localTokenRow = new Setting(root)
+      .setName("Vault as MCP bearer token")
+      .setDesc("Optional. Needed only if Vault as MCP has bearer authentication enabled.");
+    this.localTokenRow.addText((input) => {
+      this.localTokenInput = input;
+      input.setPlaceholder("Paste local token");
+      input.inputEl.type = "password";
+      input.inputEl.autocomplete = "off";
+    });
+    this.localTokenRow.addButton((button) =>
+      button.setButtonText("Save").onClick(async () => {
+        try {
+          await this.plugin.secrets.saveMcpToken(this.localTokenInput?.getValue() ?? "");
+          this.localTokenInput?.setValue("");
+          await this.refreshLocalTokenStatus();
+          this.plugin.manager.disconnect();
+          await this.plugin.manager.connectNow();
+          new Notice("Local MCP token saved securely");
+        } catch (error) {
+          notifyFailure(error);
+        }
+      }),
+    );
+    this.localTokenRow.addButton((button) =>
+      button.setButtonText("Forget").onClick(async () => {
+        try {
+          this.plugin.manager.disconnect();
+          await this.plugin.secrets.forgetMcpToken();
+          await this.refreshLocalTokenStatus();
+          new Notice("Local MCP token removed");
+        } catch (error) {
+          notifyFailure(error);
+        }
+      }),
+    );
+    void this.refreshLocalTokenStatus();
 
     new Setting(root)
       .setName("Executable path")
@@ -344,6 +386,20 @@ class TunnelSettingsTab extends PluginSettingTab {
     try {
       const state = await inspectVaultAsMcp(this.app, this.plugin.settings.mcpUrl);
       if (this.vaultRow !== row) return;
+      if (state.authenticationRequired) {
+        const hasToken = await this.plugin.secrets.hasMcpToken();
+        if (this.vaultRow !== row) return;
+        row.setDesc(
+          hasToken
+            ? "Installed · Local bearer authentication is enabled"
+            : "Local MCP requires a bearer token. Add it under Advanced.",
+        );
+        if (!hasToken && !this.advancedExpanded) {
+          this.advancedExpanded = true;
+          this.display();
+        }
+        return;
+      }
       row.setDesc(
         !state.installed
           ? "Not installed. Install Vault as MCP from Obsidian Community plugins."
@@ -386,6 +442,23 @@ class TunnelSettingsTab extends PluginSettingTab {
       }
     } catch {
       if (this.credentialRow === row) row.setDesc("Unable to read Windows credential storage.");
+    }
+  }
+
+  private async refreshLocalTokenStatus(): Promise<void> {
+    const row = this.localTokenRow;
+    if (!row) return;
+    try {
+      const saved = await this.plugin.secrets.hasMcpToken();
+      if (this.localTokenRow === row) {
+        row.setDesc(
+          saved
+            ? "Token encrypted for this Windows account. Leave the input empty to keep it."
+            : "Optional. Only required if Vault as MCP has bearer authentication enabled.",
+        );
+      }
+    } catch {
+      if (this.localTokenRow === row) row.setDesc("Unable to access the encrypted MCP token.");
     }
   }
 
