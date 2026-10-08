@@ -96,14 +96,22 @@ export async function runPowerShell(
   });
 }
 
+/**
+ * Per-user DPAPI secrets, stored outside any Obsidian vault.
+ * Secret values enter PowerShell over stdin and are never command arguments.
+ */
 export class WindowsSecretStore {
-  private get filePath(): string {
+  private get runtimeKeyPath(): string {
     return join(localDataDirectory(), "runtime-key.dpapi");
   }
 
-  async hasKey(): Promise<boolean> {
+  private get mcpTokenPath(): string {
+    return join(localDataDirectory(), "mcp-token.dpapi");
+  }
+
+  private async hasSecret(path: string): Promise<boolean> {
     try {
-      await readFile(this.filePath);
+      await readFile(path);
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
@@ -111,30 +119,60 @@ export class WindowsSecretStore {
     }
   }
 
-  async saveKey(value: string): Promise<void> {
-    if (
-      value.length < 16 ||
-      value.length > 4096 ||
-      /[\r\n\0]/.test(value)
-    ) {
-      throw new Error("Enter a valid runtime API key.");
-    }
+  private async saveSecret(path: string, value: string): Promise<void> {
     const encrypted = await runPowerShell(SAVE_SCRIPT, value);
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encrypted)) {
       throw new Error("Windows did not return an encrypted credential.");
     }
     await mkdir(localDataDirectory(), { recursive: true });
-    await writeFile(this.filePath, encrypted, { mode: 0o600 });
+    await writeFile(path, encrypted, { mode: 0o600 });
   }
 
-  async readKey(): Promise<string> {
-    const encrypted = await readFile(this.filePath, "utf8");
+  private async readSecret(path: string): Promise<string> {
+    const encrypted = await readFile(path, "utf8");
     const value = await runPowerShell(LOAD_SCRIPT, encrypted);
     if (!value) throw new Error("The encrypted credential is empty.");
     return value;
   }
 
+  async hasKey(): Promise<boolean> {
+    return this.hasSecret(this.runtimeKeyPath);
+  }
+
+  async saveKey(value: string): Promise<void> {
+    if (value.length < 16 || value.length > 4096 || /[\r\n\0]/.test(value)) {
+      throw new Error("Enter a valid runtime API key.");
+    }
+    await this.saveSecret(this.runtimeKeyPath, value);
+  }
+
+  async readKey(): Promise<string> {
+    return this.readSecret(this.runtimeKeyPath);
+  }
+
   async forgetKey(): Promise<void> {
-    await rm(this.filePath, { force: true });
+    await rm(this.runtimeKeyPath, { force: true });
+  }
+
+  async hasMcpToken(): Promise<boolean> {
+    return this.hasSecret(this.mcpTokenPath);
+  }
+
+  async saveMcpToken(value: string): Promise<void> {
+    // A static MCP Authorization header is passed via the official client's
+    // environment. Forbid whitespace, line breaks and comma separators.
+    if (value.length < 8 || value.length > 4096 ||
+      !/^[A-Za-z0-9._~+/\-]+={0,2}$/.test(value)) {
+      throw new Error("Enter a valid bearer token without spaces.");
+    }
+    await this.saveSecret(this.mcpTokenPath, value);
+  }
+
+  async readMcpToken(): Promise<string> {
+    return this.readSecret(this.mcpTokenPath);
+  }
+
+  async forgetMcpToken(): Promise<void> {
+    await rm(this.mcpTokenPath, { force: true });
   }
 }
