@@ -212,22 +212,28 @@ export class TunnelManager {
       }
     }
 
-    // A manually started client uses 8080; our plugin uses 8766. Do not
-    // duplicate either runtime or terminate a process we did not start.
-    for (const listener of [MANAGED_HEALTH, FOREGROUND_HEALTH]) {
-      if (await portOpen(listener.hostname, Number(listener.port))) {
-        const healthy = await probeLocalHttp(new URL("/healthz", listener));
-        if (healthy === 200) {
-          this.update(
-            "existing-runtime",
-            "A tunnel client is already running on port " + listener.port +
-              ". Stop it to allow automatic management.",
-          );
-        } else if (listener === MANAGED_HEALTH) {
-          this.update("error", "Port 8766 is occupied by another application.");
-        } else {
-          this.update("existing-runtime", "Port 8080 is occupied; check any manually running tunnel.");
-        }
+    // Only the managed health port is reserved. Other applications on :8080
+    // must not prevent an otherwise independent local tunnel from running.
+    if (await portOpen(MANAGED_HEALTH.hostname, Number(MANAGED_HEALTH.port))) {
+      const healthy = await probeLocalHttp(new URL("/healthz", MANAGED_HEALTH));
+      this.update(
+        healthy === 200 ? "existing-runtime" : "error",
+        healthy === 200
+          ? "Another managed tunnel is already running. Stop it before connecting."
+          : "Port 8766 is already occupied by another application.",
+      );
+      return;
+    }
+
+    // Recognize, but never touch, a foreground OpenAI client on :8080.
+    const foregroundHealthy = await probeLocalHttp(new URL("/healthz", FOREGROUND_HEALTH));
+    if (foregroundHealthy === 200) {
+      const foregroundReady = await probeLocalHttp(new URL("/readyz", FOREGROUND_HEALTH));
+      if (foregroundReady === 200 || foregroundReady === 503) {
+        this.update(
+          "existing-runtime",
+          "An OpenAI tunnel is running on port 8080. Stop it before automatic management.",
+        );
         return;
       }
     }
