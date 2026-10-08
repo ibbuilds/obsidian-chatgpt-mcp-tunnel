@@ -28,6 +28,7 @@ function showError(error: unknown): void {
 }
 
 function addExternalLink(setting: Setting, text: string, url: string): void {
+  setting.descEl.createSpan({ text: " · " });
   const link = setting.descEl.createEl("a", { text, href: url });
   link.setAttr("target", "_blank");
   link.setAttr("rel", "noopener noreferrer");
@@ -105,7 +106,7 @@ export class ConnectionView extends ItemView {
     const snapshot = this.plugin.manager.snapshot;
     this.statusRow.setDesc(snapshot.detail);
     this.toggleButton?.setButtonText(snapshot.managed ? "Disconnect" : "Connect");
-    this.toggleButton?.setDisabled(snapshot.state === "starting");
+    this.toggleButton?.setDisabled(snapshot.state === "starting" || (!snapshot.managed && !this.configReady()));
     // Use Obsidian's existing primary-button styling only for Connect.
     this.toggleButton?.buttonEl.toggleClass("mod-cta", !snapshot.managed);
   }
@@ -210,7 +211,7 @@ export class ConnectionView extends ItemView {
     });
 
     if (this.setupExpanded) {
-      new Setting(root).setName("Local connection").setHeading();
+      new Setting(root).setName("Connection setup").setHeading();
       this.renderVault(root);
       this.renderClient(root);
       this.renderTunnelId(root);
@@ -322,6 +323,7 @@ export class ConnectionView extends ItemView {
             "aria-invalid", Boolean(value.trim()) && !isValidTunnelId(value),
           );
           this.copyButton?.setDisabled(!isValidTunnelId(value));
+          this.updateConnection();
         });
     });
   }
