@@ -96,10 +96,14 @@ export async function downloadVerifiedZip(
 }
 
 /** TCP/HTTP probes never contact external hosts or perform MCP operations. */
-export async function probeLocalHttp(url: URL, timeoutMs = 1500): Promise<number | null> {
+export async function probeLocalHttp(
+  url: URL,
+  timeoutMs = 1500,
+  headers: Record<string, string> = {},
+): Promise<number | null> {
   if (url.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(url.hostname)) return null;
   return new Promise((resolve) => {
-    const req = httpRequest(url, { method: "GET", timeout: timeoutMs }, (response) => {
+    const req = httpRequest(url, { method: "GET", timeout: timeoutMs, headers }, (response) => {
       response.resume();
       resolve(response.statusCode ?? null);
     });
