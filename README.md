@@ -1,61 +1,64 @@
 # MCP Tunnel
 
-Minimal Windows-first Obsidian companion plugin for [Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp) and the official [OpenAI Tunnel Client](https://github.com/openai/tunnel-client).
+A focused Windows desktop plugin for [Obsidian](https://obsidian.md/) that simplifies the first connection to ChatGPT and automatically runs the official [OpenAI Tunnel Client](https://github.com/openai/tunnel-client) alongside [Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp).
 
-**Open Obsidian → local MCP server starts → tunnel starts.** Configure once; use the same tunnel from normal ChatGPT.
+**Configure once. Open Obsidian. ChatGPT can reach your MCP server.**
+
+Vault as MCP provides the local MCP server and starts it automatically. MCP Tunnel manages the **outbound connection to ChatGPT**. It does not create a second server or access the vault's notes directly.
 
 ## Setup
 
-1. Install **Vault as MCP** and enable **Auto-start server** (default: `http://127.0.0.1:8765/mcp`).
-2. Install **MCP Tunnel** in Obsidian and open its native settings.
-3. Click **Install official client**, or paste an existing `tunnel-client.exe` path.
-4. Copy your Tunnel ID from [Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels).
-5. Create a **Restricted** API key with **Tunnels: Read + Use** in [Platform → API keys](https://platform.openai.com/settings/organization/api-keys); paste it once and click **Save key**.
-6. Click **Connect**. Register ChatGPT once using the **Tunnel** connection option and that same ID, not the Server URL option.
+Install both **Vault as MCP** and **MCP Tunnel** as Obsidian community plugins (or install MCP Tunnel manually from the release).
 
-Leave **Connect automatically** enabled. Subsequent launches need no PowerShell or manual API key entry.
+Open **Settings → MCP Tunnel**. The native setup section contains only four items:
 
-**Existing manual tunnel:** stop an existing `tunnel-client run` window on port 8080 before using automatic startup. This plugin never terminates processes it did not launch.
+1. **Vault as MCP** — checks that the other plugin is installed and the local MCP endpoint responds. Click **Open plugin** if it needs setup. Enable **Auto-start server** there.
+2. **Tunnel client** — click **Install** to download and verify the official OpenAI client. **No manual ZIP extraction or PowerShell required.**
+3. **Tunnel ID** — click **Open tunnels** to create the tunnel in OpenAI Platform; paste its ID.
+4. **Runtime API key** — click **Open keys**, create a **Restricted** key with **Tunnels: Read + Use**, paste once, and click **Save**. Windows encrypts the key outside the vault.
 
-## Behavior
+Click **Connect**. Once the tunnel is ready, use **Open ChatGPT** to register an MCP connection using the **Tunnel** option and the same Tunnel ID. That final one-time account authorization is performed in ChatGPT, not by this plugin.
 
-- Starts asynchronously after Obsidian is ready; waits for Vault as MCP.
-- Launches the official client on an ephemeral loopback health port.
-- Reports ready only when the client's `/readyz` responds successfully.
-- Retries unexpected exits with bounded exponential backoff.
-- Stops only its own client on normal Obsidian shutdown.
-- Uses native settings and commands, without custom CSS or dashboard UI.
+The user still creates their own tunnel, API key and ChatGPT connection. These require authenticated OpenAI account permissions; this plugin does not silently request administrator privileges.
 
-## Security
+Once configured, the setup fields are hidden behind **Manage**. The normal interface contains connection status, Connect/Disconnect and **Connect automatically** (enabled by default).
 
-- Downloaded archives are verified against GitHub's official release size and SHA-256 digest.
-- The API key is encrypted with **Windows DPAPI (CurrentUser)** outside your vault, at `%LOCALAPPDATA%\ObsidianMcpTunnel\runtime-key.dpapi`.
-- Plaintext API keys are not persisted in the vault, CLI arguments or log output. The key is briefly decrypted and supplied to the child process environment.
-- Only literal loopback MCP endpoints are accepted.
-- The OpenAI tunnel relays authorized MCP requests and responses, which may contain your note data. DPAPI only protects credentials at rest. This plugin does not guarantee free API Platform billing.
+## Each time Obsidian opens
 
-See [SECURITY.md](SECURITY.md).
+1. Vault as MCP starts its local server as configured.
+2. MCP Tunnel waits for the local server, then starts `tunnel-client.exe` automatically in the background.
+3. The client's `/readyz` reports when its connection is ready. Unexpected exits trigger bounded retries.
+4. On normal Obsidian shutdown, MCP Tunnel stops only the client that **it** launched.
 
-## Build and install
+There is no separate PowerShell window or manual key entry on subsequent launches.
 
-Requires Node.js 22 or later.
+If an older tunnel-client process is still running manually on port 8080, stop it first. MCP Tunnel never terminates external processes.
+
+## Safety and performance
+
+- Official release archives must match GitHub's published **SHA-256 and size**.
+- The installer retains **tunnel-client.exe and its bundled cloudflared.exe** together in `%LOCALAPPDATA%\ObsidianMcpTunnel\client\`. Both binaries are necessary for the supported release.
+- The runtime key is protected with **Windows DPAPI (CurrentUser)** at `%LOCALAPPDATA%\ObsidianMcpTunnel\runtime-key.dpapi`. It is never saved in the Obsidian vault, command-line arguments or logs.
+- Keys are decrypted briefly when starting the child process. DPAPI protects keys at rest, not against a compromised Windows session.
+- The MCP endpoint must be on the local loopback interface. Your note data may still transit the OpenAI tunnel when ChatGPT calls Vault as MCP tools.
+- The status UI is built only with native Obsidian `Setting` components. No custom CSS, dashboard framework, active polling in the UI or ribbon clutter.
+- Other than the 3-second lightweight health check loop, the plugin does no work after startup unless a connection needs attention.
+
+## Advanced
+
+**Manage → Advanced** allows reusing an existing executable or changing the local MCP endpoint. The plugin never installs or modifies Vault as MCP.
+
+## Installation from source
+
+Requires Node.js 22+:
 
 ~~~bash
 npm install
 npm run build
 ~~~
 
-Copy `main.js` and `manifest.json` into `<vault>/.obsidian/plugins/obsidian-mcp-tunnel/` and reload Obsidian.
+Install `main.js` and `manifest.json` under `<vault>/.obsidian/plugins/obsidian-mcp-tunnel/`, reload Obsidian, and enable the plugin.
 
-`npm test` runs regression tests. `npm run typecheck` performs strict TypeScript checks. CI runs on Windows and Ubuntu, including a Windows-only credential round-trip.
+The automated pipeline runs unit tests, strict TypeScript checks, and production builds on Windows and Ubuntu. A real Windows Obsidian/ChatGPT end-to-end check is still needed before a stable release.
 
-## Architecture
-
-- `src/main.ts`: native settings and Obsidian commands.
-- `src/manager.ts`: lifecycle, local health checks and retries.
-- `src/installer.ts`: explicit verified binary installation.
-- `src/network.ts`: restricted GitHub HTTPS download and local health probes.
-- `src/windows.ts`: Windows DPAPI credential storage.
-- `src/validation.ts` and `src/release.ts`: testable validation boundaries.
-
-Windows desktop, one managed tunnel, and Vault as MCP are the intentionally narrow scope of version 0.1.0.
+See [SECURITY.md](SECURITY.md) for trust boundaries and limitations.
