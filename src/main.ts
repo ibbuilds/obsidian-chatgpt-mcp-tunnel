@@ -34,6 +34,7 @@ export default class ChatGptMcpTunnel extends Plugin {
   private statusItem: HTMLElement | null = null;
   private detectionPromise: Promise<string | null> | null = null;
   private detectionAttempted = false;
+  private detectionResult: string | null = null;
 
   async onload(): Promise<void> {
     const saved = (await this.loadData()) as Partial<TunnelSettings> | null;
@@ -122,11 +123,12 @@ export default class ChatGptMcpTunnel extends Plugin {
   async ensureClientDetected(force = false): Promise<string | null> {
     if (this.detectionPromise) return this.detectionPromise;
     if (this.detectionAttempted && !force) {
-      return this.settings.clientPath || null;
+      return this.detectionResult;
     }
     this.detectionAttempted = true;
     this.detectionPromise = (async () => {
       const found = await discoverExistingClient(this.settings.clientPath);
+      this.detectionResult = found;
       if (found && found !== this.settings.clientPath) {
         this.settings.clientPath = found;
         await this.saveSettings();
