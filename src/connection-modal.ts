@@ -384,9 +384,8 @@ export class ConnectionModal extends Modal {
               : "Installed, but the local server is not responding.",
       );
       if (state.authenticationRequired && !(await this.plugin.secrets.hasMcpToken())) {
-        if (this.active && !this.advancedVisible) {
-          this.advancedVisible = true;
-          this.render();
+        if (this.vaultRow === row && this.active) {
+          row.setDesc("Vault as MCP requires a bearer token. Add it under Advanced.");
         }
       }
     } catch {
