@@ -74,7 +74,7 @@ Place both files into `<vault>/.obsidian/plugins/obsidian-mcp-tunnel/`. Reload O
 Node.js 22+ is required:
 
 ~~~sh
-npm install
+npm ci
 npm run build
 ~~~
 
