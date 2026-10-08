@@ -3,7 +3,25 @@ import test from "node:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverExistingClient } from "../src/discovery.ts";
+import { createRequire } from "node:module";
+import esbuild from "esbuild";
+
+const bundleDir = await mkdtemp(join(tmpdir(), "chatgpt-discovery-bundle-"));
+let discoverExistingClient;
+try {
+  const bundle = join(bundleDir, "discovery.cjs");
+  await esbuild.build({
+    entryPoints: ["src/discovery.ts"],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    outfile: bundle,
+  });
+  discoverExistingClient = createRequire(import.meta.url)(bundle).discoverExistingClient;
+} finally {
+  await rm(bundleDir, { recursive: true, force: true });
+}
 
 const fakeExe = Buffer.alloc(600_000);
 fakeExe.write("MZ", 0, "ascii");
