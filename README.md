@@ -6,6 +6,8 @@
 
 Windows desktop only. The interface uses Obsidian's native `Setting` components and follows the current theme.
 
+The official client uses **two adjacent executables**: `tunnel-client.exe` manages requests and the OpenAI connection; `cloudflared.exe` provides the encrypted tunnel transport. Both are shipped by OpenAI and launched together. **No separate Cloudflare account or configuration is needed.**
+
 ## First-time setup
 
 Install and enable both Obsidian plugins: **Vault as MCP** and **MCP Tunnel**. Enable **Auto-start server** in Vault as MCP.
@@ -23,7 +25,7 @@ Once configured, the setup section collapses behind **Manage**. Normal operation
 
 ## Every time Obsidian opens
 
-- Vault as MCP starts its local HTTP MCP server as usual.
+- Vault as MCP starts its local HTTP MCP server as usual. MCP Tunnel verifies that the local listener identifies itself as Vault as MCP through a read-only MCP `initialize` request.
 - MCP Tunnel waits for it and launches the official client in the background.
 - The client keeps an outbound HTTPS connection with OpenAI; ChatGPT can send authorized MCP requests to the local server.
 - The status changes to **Tunnel ready** only after the official client's `/readyz` responds successfully.
@@ -94,6 +96,6 @@ On Windows:
 npm run smoke:client
 ~~~
 
-The smoke test downloads the latest official release, verifies both Windows executables, runs the official `--version` command, and checks repeat installation. CI runs this test on Windows in addition to TypeScript, unit tests and production builds on Windows and Linux.
+The smoke test downloads the latest official release, verifies both Windows executables, runs the official `--version` command, and checks repeat installation. The normal CI pipeline runs TypeScript, unit tests and production builds on Windows and Linux. The official-download smoke is available on demand from **GitHub Actions → CI → Run workflow**: select Windows and the manual workflow runs the installer smoke. It is not triggered on every commit because the shared GitHub Actions IP range can hit GitHub's unauthenticated API rate limits.
 
 A real end-to-end test with your own Vault as MCP, OpenAI tunnel ID, runtime API key and ChatGPT account is still needed before removing the preview label.
