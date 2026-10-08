@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mcp-tunnel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Manage a secure OpenAI MCP tunnel for an Obsidian vault.",
   "main": "main.js",
