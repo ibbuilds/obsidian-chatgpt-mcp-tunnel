@@ -5,8 +5,10 @@ import {
   setIcon,
   type App,
 } from "obsidian";
+import { join, sep } from "node:path";
 import { ConnectionModal } from "./connection-modal";
 import { discoverExistingClient } from "./discovery";
+import { localDataDirectory } from "./windows";
 import { TunnelManager } from "./manager";
 import { DEFAULT_SETTINGS, type ConnectionState, type TunnelSettings } from "./types";
 import { WindowsSecretStore } from "./windows";
@@ -127,9 +129,18 @@ export default class ChatGptMcpTunnel extends Plugin {
     }
     this.detectionAttempted = true;
     this.detectionPromise = (async () => {
-      const found = await discoverExistingClient(this.settings.clientPath);
+      const trustedRoot = join(localDataDirectory(), "client");
+      // On startup only auto-adopt binaries previously installed by this
+      // plugin. Files discovered in Downloads/PATH require a user click on
+      // Detect before they're configured to run automatically.
+      const found = await discoverExistingClient(
+        this.settings.clientPath,
+        force ? undefined : [trustedRoot],
+      );
       this.detectionResult = found;
-      if (found && found !== this.settings.clientPath) {
+      const insideManagedRoot = found !== null &&
+        found.toLowerCase().startsWith((trustedRoot + sep).toLowerCase());
+      if (found && found !== this.settings.clientPath && (force || insideManagedRoot)) {
         this.settings.clientPath = found;
         await this.saveSettings();
       }
