@@ -11,7 +11,7 @@ test("visible plugin identity is ChatGPT MCP Tunnel, not Obsidian", () => {
 
   assert.equal(manifest.id, "chatgpt-mcp-tunnel");
   assert.equal(manifest.name, "ChatGPT MCP Tunnel");
-  assert.equal(manifest.version, "0.4.0");
+  assert.equal(manifest.version, "0.5.0");
   assert.doesNotMatch(manifest.name, /Obsidian/i);
   assert.match(appSource, /setName\("ChatGPT MCP Tunnel"\)/);
   assert.match(appSource, /name: "Connect"/);
@@ -45,4 +45,18 @@ test("client identity matches the plugin name and released version", () => {
   const source = readText("src/mcp-probe.ts");
   const version = readJson("manifest.json").version;
   assert.ok(source.includes('name: "chatgpt-mcp-tunnel", version: "' + version + '"'));
+});
+
+test("connection controls use a distinct native Obsidian modal and status bar", () => {
+  const app = readText("src/main.ts");
+  const modal = readText("src/connection-modal.ts");
+
+  assert.match(app, /addStatusBarItem\(\)/);
+  assert.match(app, /new ConnectionModal\(this\)/);
+  assert.match(modal, /class ConnectionModal extends Modal/);
+  assert.match(modal, /new Setting\(root\)/);
+  assert.match(modal, /setName\("Tunnel client"\)/);
+  assert.match(modal, /setName\("Tunnel ID"\)/);
+  assert.doesNotMatch(app, /setName\("Tunnel ID"\)/);
+  assert.doesNotMatch(app, /setName\("Runtime API key"\)/);
 });
