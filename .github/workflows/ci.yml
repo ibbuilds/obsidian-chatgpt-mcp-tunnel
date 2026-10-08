@@ -22,6 +22,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+      - name: Dependency audit
+        run: npm audit --audit-level=low
       - name: Unit tests
         run: npm test
       - name: TypeScript
@@ -35,3 +37,20 @@ jobs:
         # Explicit only: GitHub's unauthenticated release API is rate-limited on shared CI IPs.
         if: matrix.os == 'windows-latest' && github.event_name == 'workflow_dispatch'
         run: npm run smoke:client
+
+  npm12:
+    name: Clean install and build (Windows, npm 12)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install npm 12
+        run: npm install --global npm@12.0.2 --no-audit --no-fund
+      - name: Install dependencies with strict script approvals
+        run: npm ci --strict-allow-scripts
+      - name: Dependency audit
+        run: npm audit --audit-level=low
+      - name: Build and test
+        run: npm run build
