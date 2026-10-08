@@ -331,7 +331,8 @@ export class ConnectionPopover {
       const s = this.host.snapshot, ready = s.state === "connected";
       status.textContent = ready ? "Local tunnel ready. You can now add it in ChatGPT." : s.detail;
       status.classList.toggle("is-error", s.state === "error");
-      this.disable(open, !ready);
+      // Checking ChatGPT settings must remain available even when the local
+      // tunnel is temporarily offline; connector registration still needs readiness.
       retry.buttonEl.hidden = ready;
       retry.setButtonText(s.state === "starting" || s.state === "connecting" ? "Cancel connection" : s.state === "stopping" ? "Stopping…" : "Connect tunnel");
       this.disable(retry, s.state === "stopping");
