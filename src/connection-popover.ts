@@ -317,7 +317,7 @@ export class ConnectionPopover {
     }));
     const status = this.element(this.body!, "p", "cmt-help"); status.setAttribute("role", "status");
     const actions = this.element(this.body!, "div", "cmt-actions");
-    const open = this.button(actions, "Open ChatGPT ↗", () => this.openPage(URLS.chatgpt), "primary");
+    this.button(actions, "Open ChatGPT ↗", () => this.openPage(URLS.chatgpt), "primary");
     const retry = this.button(actions, "Connect tunnel", () => {
       const s = this.host.snapshot;
       if (s.managed || s.state === "starting" || s.state === "connecting") this.host.disconnect();
