@@ -11,7 +11,7 @@ test("visible plugin identity is ChatGPT MCP Tunnel, not Obsidian", () => {
 
   assert.equal(manifest.id, "chatgpt-mcp-tunnel");
   assert.equal(manifest.name, "ChatGPT MCP Tunnel");
-  assert.equal(manifest.version, "0.4.0");
+  assert.equal(manifest.version, "0.5.0");
   assert.doesNotMatch(manifest.name, /Obsidian/i);
   assert.match(appSource, /setName\("ChatGPT MCP Tunnel"\)/);
   assert.match(appSource, /name: "Connect"/);
