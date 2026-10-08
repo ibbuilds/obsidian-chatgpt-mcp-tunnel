@@ -52,7 +52,7 @@ export async function installOfficialClient(
   const destination = join(destinationDir, "tunnel-client.exe");
   if (await isCompleteInstallation(destination)) return destination;
 
-  const temp = await mkdtemp(join(tmpdir(), "obsidian-mcp-tunnel-"));
+  const temp = await mkdtemp(join(tmpdir(), "chatgpt-mcp-tunnel-"));
   const installRoot = join(localDataDirectory(), "client");
   const staging = join(installRoot, ".install-" + randomUUID());
 
