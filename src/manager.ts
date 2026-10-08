@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { validateClientExecutable } from "./installer";
+import { validateClientExecutable } from "./binaries";
 import { probeLocalHttp } from "./network";
 import type { ConnectionSnapshot, ConnectionState, TunnelSettings } from "./types";
 import { hasValidConfiguration, parseHealthBaseUrl, parseLocalMcpEndpoint } from "./validation";
