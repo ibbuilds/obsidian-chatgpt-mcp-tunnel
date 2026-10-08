@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mcp-tunnel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Manage a secure OpenAI MCP tunnel for an Obsidian vault.",
   "main": "main.js",
@@ -8,6 +8,7 @@
     "dev": "node esbuild.config.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
+    "smoke:client": "node tests/official-client-smoke.mjs",
     "bundle": "node esbuild.config.mjs production",
     "build": "npm run typecheck && npm run test && npm run bundle"
   },
