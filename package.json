@@ -1,6 +1,6 @@
 {
   "name": "obsidian-chatgpt-mcp-tunnel",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Configure and automatically manage a secure MCP tunnel from Obsidian to ChatGPT.",
   "main": "main.js",
@@ -8,16 +8,12 @@
     "dev": "node esbuild.config.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
+    "test:browser": "node tests/browser/run.mjs",
     "smoke:client": "node tests/official-client-smoke.mjs",
     "bundle": "node esbuild.config.mjs production",
     "build": "npm run typecheck && npm run test && npm run bundle"
   },
-  "keywords": [
-    "obsidian",
-    "mcp",
-    "tunnel",
-    "chatgpt"
-  ],
+  "keywords": ["obsidian", "mcp", "tunnel", "chatgpt"],
   "author": "ibbuilds",
   "license": "MIT",
   "devDependencies": {
