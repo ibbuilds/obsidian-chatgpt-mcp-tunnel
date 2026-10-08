@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { createHash } from "node:crypto";
-import { request as httpsRequest, type IncomingMessage } from "node:https";
-import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { request as httpRequest, type IncomingMessage } from "node:http";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import { MAX_ARCHIVE_BYTES } from "./release";
