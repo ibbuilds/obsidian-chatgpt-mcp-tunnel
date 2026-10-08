@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -52,7 +53,7 @@ export async function discoverExistingClient(
     if (await isCompleteInstallation(candidate)) return candidate;
     if (depth === 0) return null;
 
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Dirent<string>[];
     try {
       entries = await readdir(directory, { withFileTypes: true });
     } catch {
