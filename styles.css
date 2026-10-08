@@ -1,0 +1,38 @@
+/* ChatGPT MCP Tunnel: layout adaptation only; colors and controls stay native. */
+.chatgpt-mcp-tunnel-panel {
+  overflow-y: auto;
+  padding: var(--size-4-3) var(--size-4-4);
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item-info {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item-control {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--size-4-2);
+  width: 100%;
+  margin-left: 0;
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item-control input {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item-description {
+  overflow-wrap: anywhere;
+}
+
+.chatgpt-mcp-tunnel-panel .setting-item-heading {
+  margin-top: var(--size-4-3);
+}

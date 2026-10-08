@@ -63,7 +63,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$TAG" main.js manifest.json \
+          gh release create "$TAG" main.js manifest.json styles.css \
             --target "$GITHUB_SHA" \
             --title "$TAG (preview)" \
             --generate-notes \
