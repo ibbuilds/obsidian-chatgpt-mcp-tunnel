@@ -51,7 +51,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Test and bundle
         if: steps.existing.outputs.exists != 'true'
