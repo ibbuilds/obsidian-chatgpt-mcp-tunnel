@@ -13,7 +13,7 @@ export function parseLocalMcpEndpoint(value: string): URL | null {
     if (
       url.protocol !== "http:" ||
       !LOOPBACK_HOSTS.has(url.hostname) ||
-      !url.port ||
+      !url.port || Number(url.port) < 1 ||
       url.pathname !== "/mcp" ||
       url.username ||
       url.password ||
@@ -35,7 +35,7 @@ export function parseHealthBaseUrl(value: string): URL | null {
     if (
       url.protocol !== "http:" ||
       !LOOPBACK_HOSTS.has(url.hostname) ||
-      !url.port ||
+      !url.port || Number(url.port) < 1 ||
       url.username ||
       url.password ||
       url.search ||
