@@ -1,129 +1,98 @@
 # ChatGPT MCP Tunnel
 
-**A minimal Obsidian plugin that connects your local vault to ChatGPT through the official OpenAI Secure MCP Tunnel.**
+A minimal Windows desktop plugin that connects Obsidian to ChatGPT through OpenAI's official Secure MCP Tunnel and [Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp).
 
-[Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp) runs the MCP server inside Obsidian. **ChatGPT MCP Tunnel** installs, configures and runs OpenAI's outbound tunnel client. They work side by side: no duplicated server, external app, PowerShell window or separate dashboard.
+**Vault as MCP** owns your local MCP server and note access. **ChatGPT MCP Tunnel** manages the outbound connection. Both plugins operate independently. There is no second MCP server and no manual PowerShell window.
 
-Windows desktop only. The interface uses Obsidian's native `Setting` components and follows the current theme.
+## Native interface
 
-The official client uses **two adjacent executables**: `tunnel-client.exe` manages requests and the OpenAI connection; `cloudflared.exe` provides the encrypted tunnel transport. Both are shipped by OpenAI and launched together. **No separate Cloudflare account or configuration is needed.**
+ChatGPT MCP Tunnel has its own interaction model without copying the Vault as MCP settings page:
 
-## First-time setup
+- A discreet **ChatGPT connection indicator** in Obsidian's bottom status bar shows Setup, Waiting, Connecting, Ready, Stopped or Error. Click it to open the connection window.
+- The **connection window** is a native Obsidian modal with Connect / Disconnect, connection status and optional tunnel details. One-time setup appears only when incomplete or when the user chooses **Configure**.
+- The **plugin settings page** holds only the automatic-start preference and an **Open connection** button.
+- No custom dashboard, styling framework, ribbon icon, injected CSS or permanent settings clutter. All UI is made from Obsidian's own Modal and Setting components.
 
-Install and enable both Obsidian plugins: **Vault as MCP** and **ChatGPT MCP Tunnel**. Enable **Auto-start server** in Vault as MCP.
+You can also open the window from the Command palette: **ChatGPT MCP Tunnel: Open connection**.
 
-Then open **Settings → ChatGPT MCP Tunnel**. The first-run setup shows four short steps:
+## Setup once
 
-1. **Vault as MCP** — confirms that the plugin is installed and its local MCP endpoint responds. Use **Open plugin** if anything needs attention.
-2. **Tunnel client** — click **Install**. ChatGPT MCP Tunnel downloads the correct official OpenAI archive for Windows, validates its SHA-256 digest and size, extracts `tunnel-client.exe` and `cloudflared.exe` together, and installs both. **No command line, archive extraction or manual scripts.**
-3. **Tunnel ID** — use **Open tunnels** to create the tunnel on OpenAI Platform and paste its ID into Obsidian.
-4. **Runtime API key** — use **Open keys**, create a **Restricted** key with **Tunnels: Read + Use**, paste it once and click **Save**. The key is encrypted by Windows DPAPI outside the vault.
+1. Enable **Vault as MCP** in Obsidian and its **Auto-start server** option. The default MCP endpoint is `http://127.0.0.1:8765/mcp`.
+2. Open **ChatGPT MCP Tunnel** from the status bar and choose **Configure** (first-time setup opens automatically).
+3. **Tunnel client:** click **Detect** to locate an existing official Windows installation. If not found, click **Install**: the plugin downloads the official client, verifies SHA-256 and archive size, and installs both `tunnel-client.exe` and `cloudflared.exe` together. No manual ZIP extraction or scripts.
+4. **Tunnel ID:** use **Open tunnels** to create or find an existing tunnel in [OpenAI Platform](https://platform.openai.com/settings/organization/tunnels), then paste its ID.
+5. **Runtime API key:** use **Open keys** and create a restricted key with **Tunnels: Read + Use**. Paste it once and click **Save**. Windows protects the key with DPAPI outside the vault.
+6. Choose **Connect**. Once the status is **Ready**, register an MCP connection in ChatGPT using **Tunnel** and the same Tunnel ID. ChatGPT-side authorization remains a one-time user action.
 
-Click **Connect**. When it says **Tunnel ready**, select the **Tunnel** connection option in ChatGPT and use the same Tunnel ID. Registering the connection in ChatGPT is a one-time user-authorized step. **The plugin cannot create a tunnel or API key in your OpenAI account without your authorization.**
+You cannot bypass the authenticated account steps for issuing API keys or creating tunnels. The plugin provides direct links and handles the local installation, configuration and runtime.
 
-Once configured, the setup section collapses behind **Manage**. Normal operation shows only connection status, **Connect / Disconnect**, and **Connect automatically** (on by default).
+### An existing tunnel client
+
+The plugin checks its own verified installation directory automatically at startup. It can also reuse a manually installed executable:
+
+- Click **Detect** to search common user locations (Downloads, Desktop, Documents and PATH) for a complete official bundle.
+- If installed elsewhere, choose **Configure → Advanced → Existing executable** and enter its full `tunnel-client.exe` path, then **Use path**.
+- The client must have the official `cloudflared.exe` alongside it. An unknown executable is not silently adopted for automatic execution without user action.
+
+**No detection is exhaustive.** A client outside known locations is not treated as uninstalled or deleted. The plugin does not modify another copy of the executable.
 
 ## Every time Obsidian opens
 
-- Vault as MCP starts its local HTTP MCP server as usual. ChatGPT MCP Tunnel verifies that the local listener identifies itself as Vault as MCP through a read-only MCP `initialize` request.
-- ChatGPT MCP Tunnel waits for it and launches the official client in the background.
-- The client keeps an outbound HTTPS connection with OpenAI; ChatGPT can send authorized MCP requests to the local server.
-- The status changes to **Tunnel ready** only after the official client's `/readyz` responds successfully.
-- Unexpected exits cause bounded retries. Obsidian startup is not blocked.
-- Closing Obsidian normally stops the full process tree, including the bundled `cloudflared.exe`. **Disconnect** stops automatic retries for the current session.
+Vault as MCP starts its local server. ChatGPT MCP Tunnel verifies its identity through a read-only MCP initialization request, then launches the official OpenAI client after the editor is ready.
 
-A fixed local health address (`http://127.0.0.1:8766`) prevents multiple managed instances or an orphaned client from silently creating duplicate tunnels after a crash. A manually started OpenAI client normally uses port 8080. When an existing tunnel is detected, the plugin does not kill or replace it.
+The client's local `/readyz` endpoint determines whether the status is **Ready**. Unexpected exits trigger bounded retries. The plugin prevents duplicate managed tunnels, respects an already-running manually started tunnel and stops the managed Windows process tree (including cloudflared) on normal shutdown.
 
-**No API key re-entry or PowerShell is needed after setup.**
+After setup, simply opening Obsidian is enough. **Connect automatically** is enabled by default.
 
-## Optional: Vault as MCP bearer token
+## Preferences and security
 
-Vault as MCP can optionally protect its local MCP endpoint with a bearer token. If it is enabled, ChatGPT MCP Tunnel detects that authorization is required and exposes **Manage → Advanced → Vault as MCP bearer token**.
+**Settings → ChatGPT MCP Tunnel** contains only **Open connection** and **Connect automatically**. Everything needed to establish or repair a connection lives in the native connection window.
 
-Paste the same token you configured in Vault as MCP, then click **Save**. It is encrypted separately from your OpenAI runtime key.
+Optional Vault as MCP bearer authentication is supported through **Configure → Advanced**. Both the runtime API key and optional bearer token are encrypted for the current Windows user in `%LOCALAPPDATA%\ObsidianMcpTunnel`, not in the vault.
 
-The official tunnel client sends the token only to the configured local MCP endpoint using an `Authorization` header; it is not sent to the OpenAI control-plane API.
+The plugin does not read or edit notes itself. When you authorize ChatGPT tools, requests and selected note content may travel through the OpenAI tunnel to Vault as MCP. Configure Vault as MCP's access controls appropriately. No OpenAI API Platform billing or ChatGPT plan eligibility is guaranteed.
 
-## Settings
-
-The default local MCP URL is `http://127.0.0.1:8765/mcp`. Most users never need to change it. **Manage → Advanced** contains the local endpoint, an optional existing executable path, optional bearer token and controls to remove saved secrets.
-
-The command palette also provides **ChatGPT MCP Tunnel: Connect** and **ChatGPT MCP Tunnel: Disconnect**.
-
-## Security and scope
-
-- Downloads come exclusively from [official OpenAI releases](https://github.com/openai/tunnel-client/releases/latest). Published SHA-256 digests and byte counts are verified before extraction. Both Windows executables are retained and validated.
-- Runtime API key and optional local MCP token are encrypted using Windows **DPAPI CurrentUser**, stored outside the vault in `%LOCALAPPDATA%\ObsidianMcpTunnel\`.
-- The decrypted runtime key is passed to the child via environment variables, never written in Obsidian's `data.json`, command-line arguments or repository files.
-- The plugin accepts only literal loopback MCP server addresses; it does not read, search, modify or index vault notes itself.
-- MCP requests and responses (including selected notes) may pass through the OpenAI tunnel as part of ChatGPT operations. Review Vault as MCP's access-control settings.
-- Credentials still require user authorization in OpenAI Platform. API Platform and ChatGPT billing are separate.
-- Intended scope: one tunnel per Windows workstation. macOS/Linux, additional servers, account administration and multi-tunnel management are not supported.
-
-More detail: [SECURITY.md](SECURITY.md).
+See [SECURITY.md](SECURITY.md).
 
 ## Installation
 
-Download the two assets from the [latest GitHub release](https://github.com/ibbuilds/obsidian-chatgpt-mcp-tunnel/releases/latest):
+Download `main.js` and `manifest.json` from the [releases page](https://github.com/ibbuilds/obsidian-chatgpt-mcp-tunnel/releases), put them in `<vault>/.obsidian/plugins/chatgpt-mcp-tunnel/`, reload Obsidian and enable **ChatGPT MCP Tunnel** under Community plugins.
 
-- `main.js`
-- `manifest.json`
+To clone directly into your vault's `.obsidian/plugins` folder:
 
-Place both files into `<vault>/.obsidian/plugins/chatgpt-mcp-tunnel/`. Reload Obsidian, then enable **ChatGPT MCP Tunnel** under **Settings → Community plugins**.
-
-### Upgrade from v0.3.0
-
-Version 0.4.0 changes the Obsidian plugin ID from `obsidian-mcp-tunnel` to `chatgpt-mcp-tunnel`. If you have an existing installation, **disable the previous MCP Tunnel plugin and close Obsidian**. Rename the plugin directory before updating:
-
-```text
-<vault>/.obsidian/plugins/obsidian-mcp-tunnel/
-    → <vault>/.obsidian/plugins/chatgpt-mcp-tunnel/
-```
-
-Preserve your existing `data.json`, then install the new `main.js` and `manifest.json` (or pull and rebuild). Reopen Obsidian and enable **ChatGPT MCP Tunnel**. Your encrypted runtime key and optional MCP token remain stored in the same Windows user profile directory; neither needs to be re-entered. Do not enable both versions together.
-
-If your installation is a Git clone, run this inside the renamed plugin directory **after renaming the GitHub repository**:
-
-```cmd
-git remote set-url origin https://github.com/ibbuilds/obsidian-chatgpt-mcp-tunnel.git
-git pull --ff-only origin main
-npm ci
-npm run build
-```
-
-For a fresh clone directly into the correct plugin folder, run these commands from your vault's `.obsidian/plugins` directory:
-
-```cmd
+~~~cmd
 git clone https://github.com/ibbuilds/obsidian-chatgpt-mcp-tunnel.git chatgpt-mcp-tunnel
 cd chatgpt-mcp-tunnel
 npm ci
 npm run build
-```
-### From source
+~~~
 
-Node.js 22+ is required:
+Node.js 22 or later is required when building from source.
 
-~~~sh
+### Upgrade from v0.3.0
+
+Version 0.4.0 changed the plugin ID from `obsidian-mcp-tunnel` to `chatgpt-mcp-tunnel`. If you still use the older folder, **disable the old plugin, close Obsidian**, rename the folder to `chatgpt-mcp-tunnel` and preserve your existing `data.json`. Your DPAPI-protected Windows keys remain in the same user-local directory and are reusable.
+
+To update an existing Git clone inside the correct plugin folder:
+
+~~~cmd
+git remote set-url origin https://github.com/ibbuilds/obsidian-chatgpt-mcp-tunnel.git
+git pull --ff-only origin main
 npm ci
 npm run build
 ~~~
 
-Install the generated `main.js` and `manifest.json` as above.
+Restart Obsidian and reload or re-enable the plugin.
 
-### Tests
+## Development
 
 ~~~sh
+npm ci
 npm test
 npm run typecheck
 npm run bundle
 ~~~
 
-On Windows:
+Windows and Linux CI run strict TypeScript, regression tests and a production bundle. The Windows official-binary download smoke test can be run separately with `npm run smoke:client` when GitHub releases are not rate-limited.
 
-~~~sh
-npm run smoke:client
-~~~
-
-The smoke test downloads the latest official release, verifies both Windows executables, runs the official `--version` command, and checks repeat installation. The normal CI pipeline runs TypeScript, unit tests and production builds on Windows and Linux. The official-download smoke is available on demand from **GitHub Actions → CI → Run workflow**: select Windows and the manual workflow runs the installer smoke. It is not triggered on every commit because the shared GitHub Actions IP range can hit GitHub's unauthenticated API rate limits.
-
-A real end-to-end test with your own Vault as MCP, OpenAI tunnel ID, runtime API key and ChatGPT account is still needed before removing the preview label.
+Version 0.5.0 is a **preview**. The actual Windows Obsidian-to-ChatGPT connection should be verified on a user's workstation before declaring a stable release.
