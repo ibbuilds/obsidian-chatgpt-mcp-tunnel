@@ -43,7 +43,11 @@ export async function openTrustedGithubResponse(urlString: string, remainingRedi
         }
         if (status !== 200) {
           res.resume();
-          reject(new Error("GitHub request failed (HTTP " + status + ")."));
+          reject(new Error(
+            status === 403 || status === 429
+              ? "GitHub blocked or rate-limited the download (HTTP " + status + "). Try again later."
+              : "GitHub request failed (HTTP " + status + ").",
+          ));
           return;
         }
         resolve(res);
