@@ -31,7 +31,7 @@ You cannot bypass the authenticated account steps for issuing API keys or creati
 The plugin checks its own verified installation directory automatically at startup. It can also reuse a manually installed executable:
 
 - Click **Detect** to search common user locations (Downloads, Desktop, Documents and PATH) for a complete official bundle.
-- If installed elsewhere, choose **Configure → Advanced → Existing executable** and enter its full `tunnel-client.exe` path, then **Use path**.
+- If installed elsewhere, choose **Configure → Advanced → Existing executable**. Use **Browse** to select `tunnel-client.exe` with the Windows file picker, or paste its path and choose **Use path**.
 - The client must have the official `cloudflared.exe` alongside it. An unknown executable is not silently adopted for automatic execution without user action.
 
 **No detection is exhaustive.** A client outside known locations is not treated as uninstalled or deleted. The plugin does not modify another copy of the executable.
