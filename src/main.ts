@@ -4,9 +4,10 @@ import {
   Setting,
   setIcon,
   type App,
+  type WorkspaceLeaf,
 } from "obsidian";
 import { join, sep } from "node:path";
-import { ConnectionModal } from "./connection-modal";
+import { CONNECTION_VIEW_TYPE, ConnectionView } from "./connection-view";
 import { discoverExistingClient } from "./discovery";
 import { TunnelManager } from "./manager";
 import { DEFAULT_SETTINGS, type ConnectionState, type TunnelSettings } from "./types";
@@ -25,13 +26,12 @@ function stateLabel(state: ConnectionState): string {
   }
 }
 
-/** Connection manager, not a second MCP server. Vault as MCP owns the server. */
+/** Manage a ChatGPT tunnel without duplicating Vault as MCP's server. */
 export default class ChatGptMcpTunnel extends Plugin {
   settings: TunnelSettings = { ...DEFAULT_SETTINGS };
   readonly secrets = new WindowsSecretStore();
   manager!: TunnelManager;
 
-  private connectionModal: ConnectionModal | null = null;
   private statusItem: HTMLElement | null = null;
   private detectionPromise: Promise<string | null> | null = null;
   private detectionAttempted = false;
@@ -47,17 +47,21 @@ export default class ChatGptMcpTunnel extends Plugin {
       () => this.updateConnectionUi(),
     );
 
+    this.registerView(
+      CONNECTION_VIEW_TYPE,
+      (leaf: WorkspaceLeaf) => new ConnectionView(leaf, this),
+    );
     this.addSettingTab(new TunnelSettingsTab(this.app, this));
+
     this.statusItem = this.addStatusBarItem();
     this.statusItem.addClass("mod-clickable");
     this.statusItem.setAttribute("role", "button");
     this.statusItem.tabIndex = 0;
-
-    this.registerDomEvent(this.statusItem, "click", () => this.openConnectionModal());
+    this.registerDomEvent(this.statusItem, "click", () => void this.openConnectionView());
     this.registerDomEvent(this.statusItem, "keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        this.openConnectionModal();
+        void this.openConnectionView();
       }
     });
     this.updateConnectionUi();
@@ -65,7 +69,7 @@ export default class ChatGptMcpTunnel extends Plugin {
     this.addCommand({
       id: "open-connection",
       name: "Open connection",
-      callback: () => this.openConnectionModal(),
+      callback: () => void this.openConnectionView(),
     });
     this.addCommand({
       id: "connect",
@@ -78,9 +82,10 @@ export default class ChatGptMcpTunnel extends Plugin {
       callback: () => this.manager.disconnect(),
     });
 
-    // Never block Obsidian startup while looking for a previously extracted
-    // official client. The MCP server itself is owned by Vault as MCP.
+    // Open after Obsidian's layout is available, with Vault as MCP free to
+    // start its own local server. Discovery is bounded and non-blocking to UI.
     this.app.workspace.onLayoutReady(() => {
+      this.keepStatusLast();
       void this.ensureClientDetected()
         .catch(() => undefined)
         .finally(() => this.manager.begin());
@@ -88,62 +93,85 @@ export default class ChatGptMcpTunnel extends Plugin {
   }
 
   onunload(): void {
-    this.connectionModal?.close();
     this.manager?.dispose();
+    this.app.workspace.detachLeavesOfType(CONNECTION_VIEW_TYPE);
   }
 
   private updateConnectionUi(): void {
     const snapshot = this.manager.snapshot;
     if (this.statusItem) {
       this.statusItem.empty();
-      setIcon(this.statusItem, snapshot.state === "connected" ? "plug-zap" : "plug");
+      setIcon(
+        this.statusItem,
+        snapshot.state === "connected" ? "plug-zap" : "plug",
+      );
       this.statusItem.createSpan({ text: " ChatGPT: " + stateLabel(snapshot.state) });
       this.statusItem.setAttribute(
         "aria-label",
-        "ChatGPT MCP Tunnel: " + snapshot.detail + ". Open connection.",
+        "ChatGPT MCP Tunnel: " + snapshot.detail + ". Open sidebar.",
       );
       this.statusItem.title = snapshot.detail;
     }
-    this.connectionModal?.updateConnection();
-  }
-
-  openConnectionModal(): void {
-    if (this.connectionModal) return;
-    this.connectionModal = new ConnectionModal(this);
-    this.connectionModal.open();
-  }
-
-  onConnectionModalClosed(modal: ConnectionModal): void {
-    if (this.connectionModal === modal) this.connectionModal = null;
+    for (const leaf of this.app.workspace.getLeavesOfType(CONNECTION_VIEW_TYPE)) {
+      if (leaf.view instanceof ConnectionView) leaf.view.updateConnection();
+    }
   }
 
   /**
-   * Reuse an existing complete official installation when it can be found.
-   * A missing saved path does not imply that the executable isn't installed.
+   * Status items are appended when each plugin loads. Ensure our tunnel's
+   * indicator stays after Vault as MCP and other items, including plugins
+   * enabled after ours. One MutationObserver, no timers or layout hacks.
+   */
+  private keepStatusLast(): void {
+    const item = this.statusItem;
+    const parent = item?.parentElement;
+    if (!item || !parent) return;
+    const placeLast = (): void => {
+      if (item.parentElement === parent && parent.lastElementChild !== item) {
+        parent.appendChild(item);
+      }
+    };
+    placeLast();
+    const observer = new MutationObserver(placeLast);
+    observer.observe(parent, { childList: true });
+    this.register(() => observer.disconnect());
+  }
+
+  async openConnectionView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(CONNECTION_VIEW_TYPE)[0];
+    if (!leaf) {
+      // true creates a dedicated right-sidebar leaf rather than replacing
+      // whatever other plugins/users are already showing on the right.
+      leaf = this.app.workspace.getRightLeaf(true) ?? undefined;
+      if (!leaf) return;
+      await leaf.setViewState({ type: CONNECTION_VIEW_TYPE, active: true });
+    }
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  /**
+   * Auto-detect only our own managed installation on startup. A manual
+   * Detect action is required before adopting executables in other folders.
    */
   async ensureClientDetected(force = false): Promise<string | null> {
     if (this.detectionPromise) {
       const ongoing = await this.detectionPromise;
       if (!force || ongoing) return ongoing;
-      // A manual Detect click can expand the search after a startup-only scan.
     }
-    if (this.detectionAttempted && !force) {
-      return this.detectionResult;
-    }
+    if (this.detectionAttempted && !force) return this.detectionResult;
+
     this.detectionAttempted = true;
     this.detectionPromise = (async () => {
-      const trustedRoot = join(localDataDirectory(), "client");
-      // On startup only auto-adopt binaries previously installed by this
-      // plugin. Files discovered in Downloads/PATH require a user click on
-      // Detect before they're configured to run automatically.
+      const managedRoot = join(localDataDirectory(), "client");
       const found = await discoverExistingClient(
         this.settings.clientPath,
-        force ? undefined : [trustedRoot],
+        force ? undefined : [managedRoot],
       );
       this.detectionResult = found;
-      const insideManagedRoot = found !== null &&
-        found.toLowerCase().startsWith((trustedRoot + sep).toLowerCase());
-      if (found && found !== this.settings.clientPath && (force || insideManagedRoot)) {
+      const managed =
+        found !== null &&
+        found.toLowerCase().startsWith((managedRoot + sep).toLowerCase());
+      if (found && found !== this.settings.clientPath && (force || managed)) {
         this.settings.clientPath = found;
         await this.saveSettings();
       }
@@ -161,7 +189,7 @@ export default class ChatGptMcpTunnel extends Plugin {
   }
 }
 
-/** Persistent preferences only; connection/setup live in the native modal. */
+/** Persistent preferences only. All connection interactions use the sidebar. */
 class TunnelSettingsTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: ChatGptMcpTunnel) {
     super(app, plugin);
@@ -176,9 +204,11 @@ class TunnelSettingsTab extends PluginSettingTab {
 
     new Setting(this.containerEl)
       .setName("Connection")
-      .setDesc("Manage the tunnel and its one-time setup.")
+      .setDesc("View status, configure the client and connect to ChatGPT.")
       .addButton((button) =>
-        button.setButtonText("Open connection").onClick(() => this.plugin.openConnectionModal()),
+        button
+          .setButtonText("Open sidebar")
+          .onClick(() => void this.plugin.openConnectionView()),
       );
 
     new Setting(this.containerEl)
