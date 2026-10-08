@@ -296,6 +296,43 @@ export class ConnectionModal extends Modal {
             showFailure(error);
           }
         });
+      })
+      .addButton((button) => {
+        button.setButtonText("Browse").onClick(() => {
+          const picker = document.createElement("input");
+          picker.type = "file";
+          picker.accept = ".exe";
+          picker.hidden = true;
+          this.contentEl.appendChild(picker);
+          picker.addEventListener("change", () => {
+            void (async () => {
+              try {
+                const file = picker.files?.[0];
+                if (!file) return;
+                // Electron provides the actual local path of a user-selected
+                // File. Never infer a path from a browser's fakepath value.
+                const bridge = require("electron") as {
+                  webUtils?: { getPathForFile?: (file: File) => string };
+                };
+                const path = bridge.webUtils?.getPathForFile?.(file);
+                if (!path) {
+                  throw new Error("File path is unavailable. Enter the executable path manually.");
+                }
+                await validateClientExecutable(path);
+                this.plugin.settings.clientPath = path;
+                await this.plugin.saveSettings();
+                this.clientInput?.setValue(path);
+                await this.updateClient();
+                new Notice("Existing official client selected");
+              } catch (error) {
+                showFailure(error);
+              } finally {
+                picker.remove();
+              }
+            })();
+          }, { once: true });
+          picker.click();
+        });
       });
 
     new Setting(root)
