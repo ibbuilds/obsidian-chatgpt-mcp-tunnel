@@ -71,7 +71,16 @@ Disable the previous plugin, close Obsidian and rename the old `obsidian-mcp-tun
 
 **The plugin runs tunnel-client.exe for you. Do not start it in PowerShell.** If the client exits with a nonzero code, the plugin captures a bounded amount of stdout/stderr in memory, classifies common failures, and displays a safe, actionable message in the ChatGPT popover. The raw client output is **not** written to Obsidian data, its vault, or the console, and is never shown verbatim because it may contain credentials.
 
-For example, an invalid or unauthorized OpenAI runtime key, an old unsupported executable, a blocked cloudflared.exe, and a busy local health port receive distinct messages. Update the plugin to **v0.7.1**, then click Retry. If the message still only says the cause could not be identified, share the displayed safe error message (not an API key); the remaining cause requires further diagnosis on your Windows machine. Setting the client's working directory to the location of tunnel-client.exe also fixes executable-relative file assumptions in some installations.
+Common startup failures—invalid or unauthorized runtime keys, unsupported executables, local health-port conflicts, network failures, and optional cloudflared startup errors—receive distinct messages. Known credential/configuration failures wait for a manual correction instead of retrying continuously; transient connection failures use bounded backoff. If the message still says the cause could not be identified, share the displayed safe message (never your API key or private notes). The client is launched automatically from its executable directory, so no PowerShell window is required.
+
+## What's improved in v0.8.0
+
+- Polished, theme-native popover across dark/light modes and narrow windows; keyboard navigation, focus, and secret visibility controls are tested in a Chromium UI harness.
+- Safer lifecycle: cancelled starts cannot spawn a late client, client replacements wait for shutdown, unexpected exits have explicit retry policies, and health timeouts are monitored.
+- Runtime isolation: unrelated shell tunnel profiles, routing, administrative keys, and raw HTTP logging are not inherited. The official client uses its normal **direct-polling** mode rather than enabling optional managed cloudflared by default.
+- Connection edits are serialized, and saving unchanged account, local endpoint, or executable values no longer interrupts an already-running tunnel.
+- Startup credentials stay encrypted outside the vault. Diagnostic output is bounded in memory, classified into safe messages, and never displayed or persisted verbatim.
+- The ChatGPT account settings link remains accessible even when the local tunnel is temporarily offline.
 
 ## Verification and limits
 
@@ -80,7 +89,7 @@ For example, an invalid or unauthorized OpenAI runtime key, an old unsupported e
 - Additional visual checks cover dark/light theme variables and 350–1200 px window widths.
 - Windows and Linux CI run the unit tests, TypeScript checks and production build. Linux CI also runs the browser interaction checks.
 
-Browser fixtures are not a live Obsidian installation. Verify your actual theme and end-to-end ChatGPT connection on your PC before treating this preview as stable.
+Browser fixtures and Windows/Linux CI are not a live, authenticated Obsidian-to-ChatGPT connection. Verify the actual tunnel, tool discovery, and note permissions on your Windows computer before treating v0.8.0 as stable.
 
 ## Security
 
