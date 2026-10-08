@@ -142,8 +142,9 @@ export default class ChatGptMcpTunnel extends Plugin {
     if (!leaf) {
       // true creates a dedicated right-sidebar leaf rather than replacing
       // whatever other plugins/users are already showing on the right.
-      leaf = this.app.workspace.getRightLeaf(true) ?? undefined;
-      if (!leaf) return;
+      const rightLeaf = this.app.workspace.getRightLeaf(true);
+      if (!rightLeaf) return;
+      leaf = rightLeaf;
       await leaf.setViewState({ type: CONNECTION_VIEW_TYPE, active: true });
     }
     await this.app.workspace.revealLeaf(leaf);
