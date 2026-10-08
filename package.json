@@ -1,7 +1,8 @@
 {
   "name": "obsidian-chatgpt-mcp-tunnel",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
+  "type": "commonjs",
   "description": "Configure and automatically manage a secure MCP tunnel from Obsidian to ChatGPT.",
   "main": "main.js",
   "scripts": {
@@ -21,6 +22,14 @@
   ],
   "author": "ibbuilds",
   "license": "MIT",
+  "allowScripts": {
+    "esbuild@0.25.10": true
+  },
+  "overrides": {
+    "obsidian": {
+      "moment": "2.31.0"
+    }
+  },
   "devDependencies": {
     "@types/node": "22.15.29",
     "esbuild": "0.25.10",

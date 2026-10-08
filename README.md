@@ -84,6 +84,8 @@ Common startup failures—invalid or unauthorized runtime keys, unsupported exec
 
 ## Verification and limits
 
+v0.8.1 fixes source-build warnings: the Obsidian development SDK uses patched Moment 2.31.0, npm 12 approves only the pinned esbuild install script, and TypeScript sources have an explicit ES-module scope. The installed `main.js` remains CommonJS for Obsidian. CI also checks dependency audits and a clean Windows build with npm 12.
+
 - Unit tests cover step selection, state copy, small-window positioning, existing-client discovery, MCP identity checks and secret handling.
 - `npm run test:browser` runs the production popover code in Chromium with DOM-level Obsidian component doubles. It checks dismissal, no layout shift, focus, form retention, error recovery and normal connection controls. Set `CHROME_PATH` if Chrome is not in a standard location.
 - Additional visual checks cover dark/light theme variables and 350–1200 px window widths.
