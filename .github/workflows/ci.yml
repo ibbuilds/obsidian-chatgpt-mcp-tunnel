@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, feat/initial-plugin]
   pull_request:
@@ -28,5 +29,6 @@ jobs:
       - name: Production bundle
         run: npm run bundle
       - name: Official Windows client smoke test
-        if: matrix.os == 'windows-latest'
+        # Explicit only: GitHub's unauthenticated release API is rate-limited on shared CI IPs.
+        if: matrix.os == 'windows-latest' && github.event_name == 'workflow_dispatch'
         run: npm run smoke:client
