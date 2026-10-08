@@ -17,6 +17,11 @@ export interface RuntimeServices {
   now(): number;
 }
 
+/** A non-default log level requires an explicit structured format upstream. */
+export function clientLaunchArguments(): string[] {
+  return ["run", "--health.listen-addr=127.0.0.1:8766", "--log.format=struct-text", "--log.level=warn"];
+}
+
 function portOpen(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = connect({ host: "127.0.0.1", port });
@@ -77,9 +82,7 @@ export const runtimeServices: RuntimeServices = {
   probe: probeVaultMcp,
   http: (url) => probeLocalHttp(url),
   portOpen,
-  launch: (config, key, token) => spawn(config.clientPath, [
-    "run", "--health.listen-addr=127.0.0.1:8766", "--log.level=warn",
-  ], {
+  launch: (config, key, token) => spawn(config.clientPath, clientLaunchArguments(), {
     windowsHide: true, cwd: dirname(config.clientPath),
     stdio: ["ignore", "pipe", "pipe"],
     env: clientEnvironment(process.env, config, key, token),

@@ -15,6 +15,9 @@ export function classifyRuntimeExit(code: number | null, output: string): Runtim
   if (/unknown flag|flag provided but not defined|unrecognized option|unknown option|unknown shorthand flag/.test(log)) {
     return result("The selected OpenAI client is incompatible with these launch options. Install the latest official client.");
   }
+  if (/log level requires|invalid logging configuration|parse log (?:level|format)/.test(log)) {
+    return result("The client rejected its logging settings. Update ChatGPT MCP Tunnel and retry.");
+  }
   if (/tunnel[- _]?id[^\n]{0,60}(invalid|required|missing)|invalid[^\n]{0,60}tunnel[- _]?id/.test(log)) {
     return result("The client rejected the Tunnel ID. Check the complete ID in OpenAI connection details.");
   }

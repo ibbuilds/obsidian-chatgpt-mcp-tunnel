@@ -73,6 +73,8 @@ Disable the previous plugin, close Obsidian and rename the old `obsidian-mcp-tun
 
 Common startup failures—invalid or unauthorized runtime keys, unsupported executables, local health-port conflicts, network failures, and optional cloudflared startup errors—receive distinct messages. Known credential/configuration failures wait for a manual correction instead of retrying continuously; transient connection failures use bounded backoff. If the message still says the cause could not be identified, share the displayed safe message (never your API key or private notes). The client is launched automatically from its executable directory, so no PowerShell window is required.
 
+v0.8.2 fixes the confirmed exit-code-1 startup failure with official client v0.0.16: warning-level logging now explicitly selects its required structured-text format. Logging configuration failures also receive a specific message and stop automatic retries.
+
 ## What's improved in v0.8.0
 
 - Polished, theme-native popover across dark/light modes and narrow windows; keyboard navigation, focus, and secret visibility controls are tested in a Chromium UI harness.
