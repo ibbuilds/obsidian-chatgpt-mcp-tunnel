@@ -11,7 +11,7 @@ test("visible plugin identity is ChatGPT MCP Tunnel, not Obsidian", () => {
 
   assert.equal(manifest.id, "chatgpt-mcp-tunnel");
   assert.equal(manifest.name, "ChatGPT MCP Tunnel");
-  assert.equal(manifest.version, "0.5.0");
+  assert.equal(manifest.version, "0.6.0");
   assert.doesNotMatch(manifest.name, /Obsidian/i);
   assert.match(appSource, /setName\("ChatGPT MCP Tunnel"\)/);
   assert.match(appSource, /name: "Connect"/);
@@ -47,16 +47,29 @@ test("client identity matches the plugin name and released version", () => {
   assert.ok(source.includes('name: "chatgpt-mcp-tunnel", version: "' + version + '"'));
 });
 
-test("connection controls use a distinct native Obsidian modal and status bar", () => {
+test("connection UI uses a native right-sidebar view, never a blocking modal", () => {
   const app = readText("src/main.ts");
-  const modal = readText("src/connection-modal.ts");
+  const view = readText("src/connection-view.ts");
 
   assert.match(app, /addStatusBarItem\(\)/);
-  assert.match(app, /new ConnectionModal\(this\)/);
-  assert.match(modal, /class ConnectionModal extends Modal/);
-  assert.match(modal, /new Setting\(root\)/);
-  assert.match(modal, /setName\("Tunnel client"\)/);
-  assert.match(modal, /setName\("Tunnel ID"\)/);
-  assert.doesNotMatch(app, /setName\("Tunnel ID"\)/);
+  assert.match(app, /registerView\(/);
+  assert.match(app, /getRightLeaf\(true\)/);
+  assert.match(app, /revealLeaf\(leaf\)/);
+  assert.match(app, /new MutationObserver\(placeLast\)/);
+  assert.match(view, /class ConnectionView extends ItemView/);
+  assert.match(view, /new Setting\(root\)/);
+  assert.match(view, /setName\("OpenAI tunnel client"\)/);
+  assert.match(view, /setName\("Tunnel ID"\)/);
+  assert.doesNotMatch(view, /\bModal\b/);
+  assert.doesNotMatch(app, /new ConnectionModal/);
   assert.doesNotMatch(app, /setName\("Runtime API key"\)/);
+});
+
+test("responsive styling uses Obsidian theme variables and is included in release assets", () => {
+  const stylesheet = readText("styles.css");
+  const workflow = readText(".github/workflows/release.yml");
+  assert.match(stylesheet, /\.chatgpt-mcp-tunnel-panel/);
+  assert.match(stylesheet, /var\(--size-4-2\)/);
+  assert.doesNotMatch(stylesheet, /#[0-9a-f]{3,8}\b/i);
+  assert.match(workflow, /main\.js manifest\.json styles\.css/);
 });
