@@ -18,6 +18,16 @@ test("Windows DPAPI protects the runtime key outside the vault", { skip: process
     const encrypted = await readFile(join(dir, "ObsidianMcpTunnel", "runtime-key.dpapi"), "utf8");
     assert.equal(encrypted.includes(secret), false);
     assert.equal(await store.readKey(), secret);
+    await store.saveMcpToken("vault-local-test-token_1234567890");
+    const encryptedMcpToken = await readFile(
+      join(dir, "ObsidianMcpTunnel", "mcp-token.dpapi"), "utf8",
+    );
+    assert.equal(encryptedMcpToken.includes("vault-local-test-token_1234567890"), false);
+    assert.equal(await store.readMcpToken(), "vault-local-test-token_1234567890");
+    await assert.rejects(store.saveMcpToken("injected, Header: bad"), /bearer token/);
+    await assert.rejects(store.saveMcpToken("bad\nheader"), /bearer token/);
+    await store.forgetMcpToken();
+    assert.equal(await store.hasMcpToken(), false);
     await store.forgetKey();
     assert.equal(await store.hasKey(), false);
   } finally {
