@@ -1,5 +1,5 @@
 import { Modal, Notice, Setting, type ButtonComponent, type TextComponent } from "obsidian";
-import { validateClientExecutable } from "./binaries";
+import { isCompleteInstallation, validateClientExecutable } from "./binaries";
 import { installOfficialClient, type InstallProgress } from "./installer";
 import { inspectVaultAsMcp } from "./prerequisites";
 import { hasValidConfiguration, isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
@@ -78,7 +78,9 @@ export class ConnectionModal extends Modal {
         this.plugin.ensureClientDetected(),
       ]);
       if (!this.active) return;
-      if (!hasKey || !this.isConfigured()) this.setupVisible = true;
+      const clientReady = await isCompleteInstallation(this.plugin.settings.clientPath);
+      if (!this.active) return;
+      this.setupVisible = !hasKey || !this.isConfigured() || !clientReady;
       this.render();
     } catch (error) {
       if (this.active) showFailure(error);
@@ -304,6 +306,7 @@ export class ConnectionModal extends Modal {
           picker.accept = ".exe";
           picker.hidden = true;
           this.contentEl.appendChild(picker);
+          picker.addEventListener("cancel", () => picker.remove(), { once: true });
           picker.addEventListener("change", () => {
             void (async () => {
               try {
