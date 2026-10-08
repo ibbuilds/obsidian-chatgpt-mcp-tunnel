@@ -5,7 +5,7 @@ MCP Tunnel is a local management plugin. It does not implement an MCP server, re
 ## Scope and trust boundaries
 
 - MCP target is constrained to a literal loopback address and the `/mcp` route. This prevents accidental proxying to remote or attacker-controlled endpoints.
-- Official client binaries are downloaded only after an explicit user action from the `openai/tunnel-client` GitHub releases. The chosen archive name, URL, published length and SHA-256 are checked before extraction.
+- Official client binaries are downloaded only after an explicit user action from the `openai/tunnel-client` GitHub releases. The chosen archive name, URL, published length and SHA-256 are checked before extraction. Both adjacent executables (`tunnel-client.exe` and `cloudflared.exe`) are kept together when installing.
 - Runtime secrets are protected using Windows DPAPI in the current user's local application directory, **not inside a synchronized Obsidian vault**.
 - No plaintext secret is written into plugin settings, command-line flags, repository files or logs. Startup requires temporary plaintext in process memory and the child process environment.
 - The plugin stops only the process it directly started. A manually launched client or unrelated process must be stopped manually.
