@@ -108,6 +108,8 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   private async replaceClient(path: string): Promise<void> {
     await this.enqueue(async () => {
       await validateClientExecutable(path);
+      // Detecting a previously selected executable must not interrupt a healthy tunnel.
+      if (path.toLowerCase() === this.settings.clientPath.toLowerCase()) return;
       const resume = this.manager.activeSession;
       await this.manager.disconnect();
       await this.commit({ ...this.settings, clientPath: path });
