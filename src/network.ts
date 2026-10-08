@@ -25,7 +25,7 @@ export async function openTrustedGithubResponse(urlString: string, remainingRedi
       {
         method: "GET",
         headers: {
-          "User-Agent": "obsidian-mcp-tunnel",
+          "User-Agent": "chatgpt-mcp-tunnel",
           Accept: url.hostname === "api.github.com" ? "application/vnd.github+json" : "*/*",
         },
       },

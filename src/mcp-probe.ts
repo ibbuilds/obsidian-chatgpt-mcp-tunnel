@@ -21,11 +21,11 @@ export async function probeVaultMcp(endpoint: string, token?: string): Promise<V
 
   const payload = JSON.stringify({
     jsonrpc: "2.0",
-    id: "obsidian-mcp-tunnel-identity-check",
+    id: "chatgpt-mcp-tunnel-identity-check",
     method: "initialize",
     params: {
       protocolVersion: "2025-06-18",
-      clientInfo: { name: "obsidian-mcp-tunnel", version: "0.3.0" },
+      clientInfo: { name: "chatgpt-mcp-tunnel", version: "0.4.0" },
       capabilities: {},
     },
   });

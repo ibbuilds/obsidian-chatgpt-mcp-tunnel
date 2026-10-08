@@ -37,8 +37,9 @@ try {
 
 export function localDataDirectory(): string {
   if (process.platform !== "win32") {
-    throw new Error("MCP Tunnel currently supports Windows only.");
+    throw new Error("ChatGPT MCP Tunnel supports Windows only.");
   }
+  // Retain the user-local data directory to preserve encrypted keys across upgrades.
   return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "ObsidianMcpTunnel");
 }
 

@@ -1,8 +1,8 @@
 {
-  "name": "obsidian-mcp-tunnel",
-  "version": "0.3.0",
+  "name": "obsidian-chatgpt-mcp-tunnel",
+  "version": "0.4.0",
   "private": true,
-  "description": "Manage a secure OpenAI MCP tunnel for an Obsidian vault.",
+  "description": "Configure and automatically manage a secure MCP tunnel from Obsidian to ChatGPT.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

@@ -17,7 +17,7 @@ if (process.platform !== "win32") {
   throw new Error("The official Windows client smoke test requires Windows.");
 }
 
-const workspace = await mkdtemp(join(tmpdir(), "obsidian-mcp-smoke-"));
+const workspace = await mkdtemp(join(tmpdir(), "chatgpt-mcp-smoke-"));
 const original = process.env.LOCALAPPDATA;
 process.env.LOCALAPPDATA = workspace;
 

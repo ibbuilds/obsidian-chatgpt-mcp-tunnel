@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import esbuild from "esbuild";
 
-const dir = await mkdtemp(join(tmpdir(), "obsidian-mcp-probe-tests-"));
+const dir = await mkdtemp(join(tmpdir(), "chatgpt-mcp-probe-tests-"));
 let probeVaultMcp;
 try {
   const output = join(dir, "mcp-probe.cjs");
@@ -69,7 +69,7 @@ test("detects the optional Vault as MCP bearer authorization", async () => {
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({
       jsonrpc: "2.0",
-      id: "obsidian-mcp-tunnel-identity-check",
+      id: "chatgpt-mcp-tunnel-identity-check",
       result: { serverInfo: { name: "obsidian-vault-mcp" } },
     }));
   }, async (url) => {

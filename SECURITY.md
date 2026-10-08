@@ -2,7 +2,7 @@
 
 ## Trust boundaries
 
-MCP Tunnel manages OpenAI's official outbound client. It does **not** implement an MCP server or read and write vault files. Vault as MCP owns permissions and tools exposed to ChatGPT.
+ChatGPT MCP Tunnel manages OpenAI's official outbound client. It does **not** implement an MCP server or read and write vault files. Vault as MCP owns permissions and tools exposed to ChatGPT.
 
 - The MCP server URL is restricted to literal `127.0.0.1` or `[::1]` on an explicitly specified port and the `/mcp` path.
 - Official Windows downloads must match the exact release asset name, trusted GitHub origin, published byte count and SHA-256 digest. Both `tunnel-client.exe` and `cloudflared.exe` must be present.
@@ -11,7 +11,7 @@ MCP Tunnel manages OpenAI's official outbound client. It does **not** implement 
 - Plaintext credentials are not written into Obsidian `data.json`, CLI arguments, repository files or plugin logs. The key and local token are briefly decrypted at client startup and passed through its child environment. The local token is supplied as a static MCP-only `Authorization` header.
 - Startup deliberately clears inherited tunnel profile, admin-key and MCP extra-header settings to prevent unrelated configuration from changing its trusted destination.
 - The local control panel and health endpoint bind to `127.0.0.1:8766`. It never binds to a public interface.
-- MCP Tunnel terminates only the child process tree that it started, including its cloudflared child. It never forcibly stops an external tunnel client.
+- ChatGPT MCP Tunnel terminates only the child process tree that it started, including its cloudflared child. It never forcibly stops an external tunnel client.
 
 ## Limits
 

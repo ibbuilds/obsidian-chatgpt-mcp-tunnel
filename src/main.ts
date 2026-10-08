@@ -29,7 +29,7 @@ function openLink(url: string): void {
 }
 
 /** Only the OpenAI tunnel runs here; Vault as MCP owns the actual MCP server. */
-export default class ObsidianMcpTunnel extends Plugin {
+export default class ChatGptMcpTunnel extends Plugin {
   settings: TunnelSettings = { ...DEFAULT_SETTINGS };
   readonly secrets = new WindowsSecretStore();
   manager!: TunnelManager;
@@ -49,12 +49,12 @@ export default class ObsidianMcpTunnel extends Plugin {
 
     this.addCommand({
       id: "connect",
-      name: "Connect MCP tunnel",
+      name: "Connect",
       callback: () => void this.manager.connectNow(),
     });
     this.addCommand({
       id: "disconnect",
-      name: "Disconnect MCP tunnel",
+      name: "Disconnect",
       callback: () => this.manager.disconnect(),
     });
 
@@ -93,7 +93,7 @@ class TunnelSettingsTab extends PluginSettingTab {
   private localTokenRow: Setting | null = null;
   private localTokenInput: TextComponent | null = null;
 
-  constructor(app: App, private readonly plugin: ObsidianMcpTunnel) {
+  constructor(app: App, private readonly plugin: ChatGptMcpTunnel) {
     super(app, plugin);
   }
 
@@ -106,7 +106,7 @@ class TunnelSettingsTab extends PluginSettingTab {
       this.expanded = !hasValidConfiguration(settings.clientPath, settings.tunnelId, settings.mcpUrl);
     }
 
-    new Setting(root).setName("MCP Tunnel").setHeading();
+    new Setting(root).setName("ChatGPT MCP Tunnel").setHeading();
     root.createEl("p", {
       text: "Connect Obsidian to ChatGPT through Vault as MCP.",
       cls: "setting-item-description",
