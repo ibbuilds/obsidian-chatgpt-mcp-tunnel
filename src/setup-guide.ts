@@ -2,6 +2,7 @@ export const SETUP_URLS = {
   tunnels: "https://platform.openai.com/settings/organization/tunnels",
   keys: "https://platform.openai.com/settings/organization/api-keys",
   chatgpt: "https://chatgpt.com/plugins",
+  chat: "https://chatgpt.com/",
   guide: "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
   vault: "obsidian://show-plugin?id=vault-as-mcp",
 };

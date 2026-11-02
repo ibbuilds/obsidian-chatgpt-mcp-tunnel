@@ -1,4 +1,4 @@
-import { Notice, Plugin, PluginSettingTab, Setting, setIcon, type App } from "obsidian";
+import { Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
 import { join } from "node:path";
 import { keepClientNearPlugin, managedClientRoot } from "./client-storage";
 import { ConnectionPopover } from "./connection-popover";
@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS, normalizeSettings, type TunnelSettings } from "./type
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
 import { localDataDirectory, WindowsSecretStore } from "./windows";
 import type { PopoverHost } from "./popover-host";
-import type { SetupFacts } from "./ui-model";
+import { statusCopy, type SetupFacts } from "./ui-model";
 
 const LEGACY_VIEW_TYPE = "chatgpt-mcp-tunnel-connection";
 
@@ -51,8 +51,7 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     this.statusItem.setAttribute("aria-haspopup", "dialog");
     this.statusItem.setAttribute("aria-expanded", "false");
     this.statusItem.tabIndex = 0;
-    setIcon(this.statusItem.createSpan({ cls: "cmt-status-icon" }), "plug-zap");
-    this.statusLabel = this.statusItem.createSpan();
+    this.statusLabel = this.statusItem.createSpan({ text: "ChatGPT" });
     this.registerDomEvent(this.statusItem, "click", () => this.togglePopover());
     this.registerDomEvent(this.statusItem, "keydown", (event) => {
       if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
@@ -60,9 +59,9 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
       }
     });
     this.updateUi();
-    this.addCommand({ id: "open-connection", name: "Open connection", callback: () => this.openPopover() });
-    this.addCommand({ id: "connect", name: "Connect", callback: () => void this.connect().catch(() => new Notice("Could not connect. Open the ChatGPT indicator for details.")) });
-    this.addCommand({ id: "disconnect", name: "Disconnect", callback: () => this.disconnect() });
+    this.addCommand({ id: "open-connection", name: "Abrir conexión", callback: () => this.openPopover() });
+    this.addCommand({ id: "connect", name: "Conectar", callback: () => void this.connect().catch(() => new Notice("No se pudo conectar. Revisa el panel de ChatGPT.")) });
+    this.addCommand({ id: "disconnect", name: "Desconectar", callback: () => this.disconnect() });
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded) return;
       this.app.workspace.detachLeavesOfType(LEGACY_VIEW_TYPE);
@@ -96,12 +95,13 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   private updateUi(): void {
     if (this.unloaded) return;
     const state = this.snapshot.state;
-    const label = state === "connected" ? "Ready" : state === "starting" || state === "connecting" ? "Connecting" : state === "stopping" ? "Stopping" : state === "not-configured" ? "Setup" : state === "error" ? "Error" : state === "existing-runtime" ? "In use" : state === "waiting-for-obsidian" ? "Waiting" : "Off";
-    this.statusLabel?.setText(`ChatGPT: ${label}`);
+    const label = statusCopy(this.snapshot).title;
+    if (this.statusLabel?.textContent !== "ChatGPT") this.statusLabel?.setText("ChatGPT");
     if (this.statusItem) {
-      this.statusItem.dataset.state = state;
-      this.statusItem.title = `${this.snapshot.detail}\nClick to manage the connection`;
-      this.statusItem.setAttribute("aria-label", `ChatGPT MCP Tunnel: ${label}. Open connection.`);
+      if (this.statusItem.dataset.state !== state) this.statusItem.dataset.state = state;
+      const description = `ChatGPT. ${label}. Abrir conexión.`;
+      if (this.statusItem.title !== description) this.statusItem.title = description;
+      if (this.statusItem.getAttribute("aria-label") !== description) this.statusItem.setAttribute("aria-label", description);
     }
     this.popover?.updateConnection();
   }
@@ -319,12 +319,12 @@ class TunnelPreferences extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
     new Setting(this.containerEl).setName("ChatGPT MCP Tunnel").setHeading();
-    new Setting(this.containerEl).setName("Connection").setDesc("Open the popover above the ChatGPT status indicator.")
-      .addButton((button) => button.setButtonText("Open connection").onClick(() => this.plugin.openPopover()));
-    new Setting(this.containerEl).setName("Start with Obsidian").setDesc("Start the tunnel automatically after setup.")
+    new Setting(this.containerEl).setName("Conexión").setDesc("Abre el panel de ChatGPT en la barra de estado.")
+      .addButton((button) => button.setButtonText("Abrir conexión").onClick(() => this.plugin.openPopover()));
+    new Setting(this.containerEl).setName("Iniciar con Obsidian").setDesc("Conecta el túnel automáticamente después de configurarlo.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.autoConnect).onChange(async (enabled) => {
         try { await this.plugin.setAutoConnect(enabled); }
-        catch { toggle.setValue(this.plugin.settings.autoConnect); new Notice("Could not save the startup preference."); }
+        catch { toggle.setValue(this.plugin.settings.autoConnect); new Notice("No se pudo guardar esta preferencia."); }
       }));
   }
 }

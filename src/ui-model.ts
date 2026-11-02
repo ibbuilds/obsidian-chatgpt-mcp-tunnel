@@ -8,14 +8,14 @@ export function firstScreen(facts: SetupFacts, validId: boolean, linked: boolean
 }
 export function statusCopy(snapshot: ConnectionSnapshot): { title: string; text: string; action: string } {
   switch (snapshot.state) {
-    case "connected": return { title: "Tunnel ready", text: "The tunnel and local MCP server are responding. Use the test prompt in ChatGPT to verify that connection.", action: "Disconnect" };
-    case "starting": case "connecting": return { title: "Connecting…", text: snapshot.detail, action: "Cancel" };
-    case "stopping": return { title: "Stopping…", text: "Waiting for the client to close safely.", action: "Stopping…" };
-    case "waiting-for-obsidian": return { title: "Waiting for Vault as MCP", text: snapshot.detail, action: snapshot.managed ? "Disconnect" : "Try again" };
-    case "existing-runtime": return { title: "Another client is running", text: snapshot.detail, action: "Check again" };
-    case "error": return { title: "Connection needs attention", text: snapshot.detail, action: snapshot.managed ? "Stop client" : "Retry" };
-    case "not-configured": return { title: "Finish setup", text: snapshot.detail, action: "Continue setup" };
-    default: return { title: "Tunnel stopped", text: "Connect when you need ChatGPT to reach this vault.", action: "Connect" };
+    case "connected": return { title: "Disponible", text: "Comprueba el acceso desde ChatGPT.", action: "Abrir ChatGPT" };
+    case "starting": case "connecting": return { title: "Conectando…", text: "Puedes cerrar el panel mientras se conecta.", action: "Cancelar" };
+    case "stopping": return { title: "Desconectando…", text: "Esperando a que termine la conexión.", action: "Desconectando…" };
+    case "waiting-for-obsidian": return { title: "Esperando a Obsidian", text: "Activa Vault as MCP para continuar.", action: snapshot.managed ? "Desconectar" : "Reintentar" };
+    case "existing-runtime": return { title: "Cliente en uso", text: "Otro cliente está activo. Revisa el diagnóstico en Opciones.", action: "Comprobar" };
+    case "error": return { title: "No se pudo conectar", text: "Reintenta la conexión o revisa el diagnóstico en Opciones.", action: snapshot.managed ? "Detener" : "Reintentar" };
+    case "not-configured": return { title: "Sin configurar", text: "Completa la conexión para usar esta bóveda desde ChatGPT.", action: "Configurar" };
+    default: return { title: "Desconectado", text: "Conecta para usar esta bóveda desde ChatGPT.", action: "Conectar" };
   }
 }
 export interface AnchorRect { left: number; right: number; top: number; bottom: number }
