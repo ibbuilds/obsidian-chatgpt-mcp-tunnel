@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import esbuild from "esbuild";
 
 const dir = await mkdtemp(join(tmpdir(), "chatgpt-mcp-probe-tests-"));
-let probeVaultMcp;
+let probeVaultMcp, inspectVaultMcp;
 try {
   const output = join(dir, "mcp-probe.cjs");
   await esbuild.build({
@@ -19,7 +19,7 @@ try {
     target: "node22",
     outfile: output,
   });
-  probeVaultMcp = createRequire(import.meta.url)(output).probeVaultMcp;
+  ({ probeVaultMcp, inspectVaultMcp } = createRequire(import.meta.url)(output));
 } finally {
   // Module is already loaded into Node memory at this point.
   await rm(dir, { recursive: true, force: true });
@@ -56,6 +56,59 @@ test("verifies Vault as MCP's actual JSON-RPC identity without reading notes", a
   }, async (url) => {
     assert.equal(await probeVaultMcp(url), "ready");
     assert.equal(observedMethod, "initialize");
+  });
+});
+
+test("discovers real note tools with a stateful SSE transport and closes its session", async () => {
+  const methods = [], session = "test-session-123";
+  await localServer(async (request, response) => {
+    if (request.method === "DELETE") {
+      methods.push("DELETE"); assert.equal(request.headers["mcp-session-id"], session);
+      response.writeHead(204); response.end(); return;
+    }
+    let text = ""; for await (const chunk of request) text += chunk;
+    const body = JSON.parse(text); methods.push(body.method);
+    if (body.method === "initialize") {
+      response.writeHead(200, { "Content-Type": "text/event-stream", "Mcp-Session-Id": session });
+      response.write('event: message\r\ndata: ' + JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {
+        protocolVersion: "2025-06-18", serverInfo: { name: "obsidian-vault-mcp" }, capabilities: { tools: {} },
+      } }) + '\r\n\r\n');
+      return; // Stream intentionally stays open.
+    }
+    assert.equal(request.headers["mcp-session-id"], session);
+    assert.equal(request.headers["mcp-protocol-version"], "2025-06-18");
+    if (body.method === "notifications/initialized") { response.writeHead(202); response.end(); return; }
+    assert.equal(body.method, "tools/list");
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    response.write(': heartbeat\n\ndata: ' + JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {
+      tools: ["list_notes", "read_note", "search_notes", "create_note", "patch_note"].map(name => ({ name })),
+    } }) + '\n\n');
+  }, async (url) => {
+    assert.deepEqual(await inspectVaultMcp(url), { state: "ready", toolCount: 5, writable: true });
+    assert.deepEqual(methods, ["initialize", "notifications/initialized", "tools/list", "DELETE"]);
+    assert.ok(!methods.includes("tools/call"), "Discovery never reads or writes notes");
+  });
+});
+
+test("a correctly named server without note tools does not pass discovery", async () => {
+  await localServer(async (request, response) => {
+    let text = ""; for await (const chunk of request) text += chunk;
+    const body = JSON.parse(text);
+    if (!body.id) { response.writeHead(202); response.end(); return; }
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: body.method === "initialize"
+      ? { serverInfo: { name: "obsidian-vault-mcp" } } : { tools: [{ name: "unrelated_tool" }] } }));
+  }, async url => {
+    assert.equal((await inspectVaultMcp(url)).state, "missing-tools");
+  });
+});
+
+test("a truncated response cannot leave an MCP check pending", async () => {
+  await localServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json", "Content-Length": "5000" });
+    response.write('{"jsonrpc":"2.0"'); setImmediate(() => response.destroy());
+  }, async url => {
+    assert.equal(await probeVaultMcp(url), "unavailable");
   });
 });
 

@@ -1,17 +1,18 @@
-import { Notice, Plugin, PluginSettingTab, Setting, setIcon, type App } from "obsidian";
+import { Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
 import { join } from "node:path";
+import { keepClientNearPlugin, managedClientRoot } from "./client-storage";
 import { ConnectionPopover } from "./connection-popover";
 import { discoverExistingClient } from "./discovery";
 import { isCompleteInstallation, validateClientExecutable } from "./binaries";
 import { installOfficialClient, type InstallProgress } from "./installer";
-import { inspectVaultAsMcp } from "./prerequisites";
-import { probeVaultMcp } from "./mcp-probe";
+import { isVaultAsMcpInstalled, startVaultServer, vaultConnectionDetails } from "./prerequisites";
+import { inspectVaultMcp } from "./mcp-probe";
 import { TunnelManager } from "./manager";
 import { DEFAULT_SETTINGS, normalizeSettings, type TunnelSettings } from "./types";
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
 import { localDataDirectory, WindowsSecretStore } from "./windows";
 import type { PopoverHost } from "./popover-host";
-import type { SetupFacts } from "./ui-model";
+import { statusCopy, type SetupFacts } from "./ui-model";
 
 const LEGACY_VIEW_TYPE = "chatgpt-mcp-tunnel-connection";
 
@@ -27,13 +28,22 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   private detectPromise: Promise<boolean> | null = null;
   private pickers = new Set<() => void>();
   private unloaded = false;
+  private connectionRequest = 0;
 
   get snapshot() { return this.manager.snapshot; }
   get installing(): boolean { return this.installPromise !== null; }
+  private get clientRoot(): string {
+    const adapter = this.app.vault.adapter as typeof this.app.vault.adapter & { getBasePath?(): string };
+    const base = adapter.getBasePath?.();
+    if (!base) throw new Error("Client installation requires a local filesystem vault.");
+    return managedClientRoot(join(base, this.manifest.dir || this.app.vault.configDir + "/plugins/" + this.manifest.id));
+  }
 
   async onload(): Promise<void> {
     this.settings = normalizeSettings(await this.loadData());
-    this.manager = new TunnelManager(() => this.settings, this.secrets, () => this.updateUi());
+    this.manager = new TunnelManager(() => this.settings, this.secrets, () => this.updateUi(), {
+      ensureLocalServer: () => startVaultServer(this.app),
+    });
     this.addSettingTab(new TunnelPreferences(this.app, this));
     this.statusItem = this.addStatusBarItem();
     this.statusItem.addClass("mod-clickable", "cmt-status");
@@ -41,8 +51,7 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     this.statusItem.setAttribute("aria-haspopup", "dialog");
     this.statusItem.setAttribute("aria-expanded", "false");
     this.statusItem.tabIndex = 0;
-    setIcon(this.statusItem.createSpan({ cls: "cmt-status-icon" }), "plug-zap");
-    this.statusLabel = this.statusItem.createSpan();
+    this.statusLabel = this.statusItem.createSpan({ text: "ChatGPT" });
     this.registerDomEvent(this.statusItem, "click", () => this.togglePopover());
     this.registerDomEvent(this.statusItem, "keydown", (event) => {
       if ((event.key === "Enter" || event.key === " ") && !event.repeat) {
@@ -50,19 +59,27 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
       }
     });
     this.updateUi();
-    this.addCommand({ id: "open-connection", name: "Open connection", callback: () => this.openPopover() });
-    this.addCommand({ id: "connect", name: "Connect", callback: () => void this.connect().catch(() => new Notice("Could not connect. Open the ChatGPT indicator for details.")) });
-    this.addCommand({ id: "disconnect", name: "Disconnect", callback: () => this.disconnect() });
+    this.addCommand({ id: "open-connection", name: "Abrir conexión", callback: () => this.openPopover() });
+    this.addCommand({ id: "connect", name: "Conectar", callback: () => void this.connect().catch(() => new Notice("No se pudo conectar. Revisa el panel de ChatGPT.")) });
+    this.addCommand({ id: "disconnect", name: "Desconectar", callback: () => this.disconnect() });
     this.app.workspace.onLayoutReady(() => {
       if (this.unloaded) return;
       this.app.workspace.detachLeavesOfType(LEGACY_VIEW_TYPE);
       if (this.statusItem?.parentElement) this.statusItem.parentElement.appendChild(this.statusItem);
-      void this.restoreManagedClient().finally(() => { if (!this.unloaded) this.manager.begin(); });
+      void (async () => {
+        await this.restoreManagedClient();
+        if (this.settings.autoConnect && !this.unloaded) {
+          try { await this.prepareVault(false); }
+          catch { /* Preflight and setup surface unavailable credentials/server state. */ }
+        }
+        if (!this.unloaded) this.manager.begin();
+      })();
     });
   }
 
   onunload(): void {
     this.unloaded = true;
+    ++this.connectionRequest;
     for (const cancel of this.pickers) cancel();
     this.popover?.close(false);
     this.manager?.dispose();
@@ -78,12 +95,13 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   private updateUi(): void {
     if (this.unloaded) return;
     const state = this.snapshot.state;
-    const label = state === "connected" ? "Ready" : state === "starting" || state === "connecting" ? "Connecting" : state === "stopping" ? "Stopping" : state === "not-configured" ? "Setup" : state === "error" ? "Error" : state === "existing-runtime" ? "In use" : state === "waiting-for-obsidian" ? "Waiting" : "Off";
-    this.statusLabel?.setText(`ChatGPT: ${label}`);
+    const label = statusCopy(this.snapshot).title;
+    if (this.statusLabel?.textContent !== "ChatGPT") this.statusLabel?.setText("ChatGPT");
     if (this.statusItem) {
-      this.statusItem.dataset.state = state;
-      this.statusItem.title = `${this.snapshot.detail}\nClick to manage the connection`;
-      this.statusItem.setAttribute("aria-label", `ChatGPT MCP Tunnel: ${label}. Open connection.`);
+      if (this.statusItem.dataset.state !== state) this.statusItem.dataset.state = state;
+      const description = `ChatGPT. ${label}. Abrir conexión.`;
+      if (this.statusItem.title !== description) this.statusItem.title = description;
+      if (this.statusItem.getAttribute("aria-label") !== description) this.statusItem.setAttribute("aria-label", description);
     }
     this.popover?.updateConnection();
   }
@@ -106,44 +124,86 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     this.updateUi();
   }
   private async replaceClient(path: string): Promise<void> {
+    const managed = await keepClientNearPlugin(path, this.clientRoot);
     await this.enqueue(async () => {
-      await validateClientExecutable(path);
+      await validateClientExecutable(managed);
       // Detecting a previously selected executable must not interrupt a healthy tunnel.
-      if (path.toLowerCase() === this.settings.clientPath.toLowerCase()) return;
+      if (managed.toLowerCase() === this.settings.clientPath.toLowerCase()) return;
       const resume = this.manager.activeSession;
+      const request = this.connectionRequest;
       await this.manager.disconnect();
-      await this.commit({ ...this.settings, clientPath: path });
-      if (resume && !this.unloaded) await this.manager.connectNow();
+      try { await this.commit({ ...this.settings, clientPath: managed }); }
+      finally { if (resume && !this.unloaded && request === this.connectionRequest) await this.manager.connectNow(); }
     });
   }
   private async restoreManagedClient(): Promise<void> {
     try {
       const original = this.settings.clientPath;
-      const found = await discoverExistingClient(original, [join(localDataDirectory(), "client")]);
-      if (found && found !== original) await this.enqueue(async () => {
+      const found = await discoverExistingClient(original, [this.clientRoot, join(localDataDirectory(), "client")]);
+      const managed = found ? await keepClientNearPlugin(found, this.clientRoot) : null;
+      if (managed && managed !== original) await this.enqueue(async () => {
         // Do not overwrite a file the user selected while discovery was running.
-        if (this.settings.clientPath === original) await this.commit({ ...this.settings, clientPath: found });
+        if (this.settings.clientPath === original) await this.commit({ ...this.settings, clientPath: managed });
       });
     } catch { /* First-run UI explains missing settings; do not block the editor. */ }
   }
 
   async inspect(): Promise<SetupFacts> {
     const config = { ...this.settings };
-    const [client, key, token, vault] = await Promise.all([
+    const [client, key, token, installed] = await Promise.all([
       isCompleteInstallation(config.clientPath), this.secrets.hasKey(),
-      this.secrets.hasMcpToken(), inspectVaultAsMcp(this.app, config.mcpUrl),
+      this.secrets.hasMcpToken(), isVaultAsMcpInstalled(this.app),
     ]);
-    let state: SetupFacts["vault"] = vault.authenticationRequired ? "authentication" : vault.endpointResponding ? "running" : vault.installed ? "stopped" : "missing";
-    if (state === "authentication" && token) {
-      const result = await probeVaultMcp(config.mcpUrl, await this.secrets.readMcpToken());
-      if (result === "ready") state = "running";
-    }
-    return { client, key, token, vault: state };
+    const result = await inspectVaultMcp(config.mcpUrl, token ? await this.secrets.readMcpToken() : undefined);
+    const state: SetupFacts["vault"] = result.state === "ready" ? "running" : result.state === "authentication-required" ? "authentication"
+      : result.state === "missing-tools" || result.state === "unexpected-server" ? result.state : installed ? "stopped" : "missing";
+    return { client, key, token, vault: state, toolCount: result.toolCount, writable: result.writable };
+  }
+
+  private async prepareVault(explicit: boolean): Promise<void> {
+    await startVaultServer(this.app, explicit);
+    if (!this.settings.autoDetectLocal) return;
+    const details = vaultConnectionDetails(this.app);
+    if (!details) return;
+    await this.enqueue(async () => {
+      if (!this.settings.autoDetectLocal) return;
+      const hasToken = await this.secrets.hasMcpToken();
+      const oldToken = hasToken ? await this.secrets.readMcpToken() : "";
+      if (this.settings.mcpUrl === details.endpoint && oldToken === details.token) return;
+      const resume = this.manager.activeSession;
+      const request = this.connectionRequest;
+      await this.manager.disconnect();
+      try {
+        const commit = () => this.commit({ ...this.settings, mcpUrl: details.endpoint });
+        if (details.token) await this.secrets.saveMcpTokenAndCommit(details.token, commit);
+        else { await commit(); await this.secrets.forgetMcpToken(); }
+      } finally { if (resume && !this.unloaded && request === this.connectionRequest) await this.manager.connectNow(); }
+    });
+  }
+
+  async prepareLocal(progress: (message: string) => void): Promise<void> {
+    progress("Starting Vault as MCP and detecting its connection…");
+    await this.prepareVault(true);
+    progress("Finding the OpenAI client…");
+    if (!(await this.findClient())) await this.installClient(progress);
+    progress("Checking the MCP note tools…");
+    const facts = await this.inspect();
+    if (facts.vault !== "running") throw new Error(facts.vault === "authentication"
+      ? "The local server needs its bearer token. Add it in Local MCP settings."
+      : facts.vault === "missing-tools" ? "Vault as MCP is missing its note tools. Update or restart it, then check again."
+      : "The local server could not be verified. Open Vault as MCP to check its server settings.");
+    if (facts.key && isValidTunnelId(this.settings.tunnelId)) await this.connect();
+  }
+
+  async useAutomaticLocal(): Promise<void> {
+    await this.enqueue(() => this.commit({ ...this.settings, autoDetectLocal: true }));
+    await this.prepareVault(true);
   }
   async findClient(): Promise<boolean> {
     if (this.detectPromise) return this.detectPromise;
     this.detectPromise = (async () => {
-      const found = await discoverExistingClient(this.settings.clientPath);
+      const managed = await discoverExistingClient(this.settings.clientPath, [this.clientRoot]);
+      const found = managed ?? await discoverExistingClient();
       if (!found) return false;
       await this.replaceClient(found); return true;
     })();
@@ -156,7 +216,7 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
       verifying: "Verifying the download…", installing: "Installing client files…",
     };
     this.installPromise = (async () => {
-      const path = await installOfficialClient((state) => progress(labels[state]));
+      const path = await installOfficialClient((state) => progress(labels[state]), this.clientRoot);
       await this.replaceClient(path);
     })();
     try { await this.installPromise; } finally { this.installPromise = null; this.updateUi(); }
@@ -198,23 +258,34 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
       // Re-saving unchanged details should never disrupt a healthy connection.
       if (!key.trim() && this.settings.tunnelId === tunnelId.trim()) return;
       // Cancel pending preflight as well as an already-running process.
+      const resume = this.manager.activeSession;
+      const request = this.connectionRequest;
       await this.manager.disconnect();
-      if (key.trim()) await this.secrets.saveKey(key.trim());
-      await this.commit({ ...this.settings, tunnelId: tunnelId.trim(),
+      const commit = () => this.commit({ ...this.settings, tunnelId: tunnelId.trim(),
         chatgptLinked: this.settings.tunnelId === tunnelId.trim() && this.settings.chatgptLinked,
       });
+      try {
+        if (key.trim()) await this.secrets.saveKeyAndCommit(key.trim(), commit);
+        else await commit();
+      } finally { if (resume && !this.unloaded && request === this.connectionRequest) await this.manager.connectNow(); }
     });
   }
   async saveLocal(endpoint: string, token: string): Promise<void> {
     if (!parseLocalMcpEndpoint(endpoint)) throw new Error("Use a local HTTP address such as http://127.0.0.1:8765/mcp.");
     await this.enqueue(async () => {
       // A no-op save must not interrupt the running tunnel.
-      if (endpoint.trim() === this.settings.mcpUrl && !token.trim()) return;
+      if (endpoint.trim() === this.settings.mcpUrl && !token.trim()) {
+        if (this.settings.autoDetectLocal) await this.commit({ ...this.settings, autoDetectLocal: false });
+        return;
+      }
       const resume = this.manager.activeSession;
+      const request = this.connectionRequest;
       await this.manager.disconnect();
-      if (token.trim()) await this.secrets.saveMcpToken(token.trim());
-      await this.commit({ ...this.settings, mcpUrl: endpoint.trim() });
-      if (resume && !this.unloaded) await this.manager.connectNow();
+      try {
+        const commit = () => this.commit({ ...this.settings, mcpUrl: endpoint.trim(), autoDetectLocal: false });
+        if (token.trim()) await this.secrets.saveMcpTokenAndCommit(token.trim(), commit);
+        else await commit();
+      } finally { if (resume && !this.unloaded && request === this.connectionRequest) await this.manager.connectNow(); }
     });
   }
   async setAutoConnect(enabled: boolean): Promise<void> {
@@ -224,15 +295,22 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     await this.enqueue(() => this.commit({ ...this.settings, chatgptLinked: true }));
   }
   async connect(): Promise<void> {
+    const request = ++this.connectionRequest;
     await this.actions.catch(() => undefined);
-    if (!this.unloaded) await this.manager.connectNow();
+    if (this.unloaded || request !== this.connectionRequest) return;
+    await this.prepareVault(false);
+    if (!this.unloaded && request === this.connectionRequest) await this.manager.connectNow();
   }
-  disconnect(): void { void this.manager.disconnect().catch(() => undefined); }
+  disconnect(): void { ++this.connectionRequest; void this.manager.disconnect().catch(() => undefined); }
   async forgetKey(): Promise<void> {
     await this.enqueue(async () => { await this.manager.disconnect(); await this.secrets.forgetKey(); });
   }
   async forgetToken(): Promise<void> {
-    await this.enqueue(async () => { await this.manager.disconnect(); await this.secrets.forgetMcpToken(); });
+    await this.enqueue(async () => {
+      await this.manager.disconnect();
+      await this.commit({ ...this.settings, autoDetectLocal: false });
+      await this.secrets.forgetMcpToken();
+    });
   }
 }
 
@@ -241,12 +319,12 @@ class TunnelPreferences extends PluginSettingTab {
   display(): void {
     this.containerEl.empty();
     new Setting(this.containerEl).setName("ChatGPT MCP Tunnel").setHeading();
-    new Setting(this.containerEl).setName("Connection").setDesc("Open the popover above the ChatGPT status indicator.")
-      .addButton((button) => button.setButtonText("Open connection").onClick(() => this.plugin.openPopover()));
-    new Setting(this.containerEl).setName("Start with Obsidian").setDesc("Start the tunnel automatically after setup.")
+    new Setting(this.containerEl).setName("Conexión").setDesc("Abre el panel de ChatGPT en la barra de estado.")
+      .addButton((button) => button.setButtonText("Abrir conexión").onClick(() => this.plugin.openPopover()));
+    new Setting(this.containerEl).setName("Iniciar con Obsidian").setDesc("Conecta el túnel automáticamente después de configurarlo.")
       .addToggle((toggle) => toggle.setValue(this.plugin.settings.autoConnect).onChange(async (enabled) => {
         try { await this.plugin.setAutoConnect(enabled); }
-        catch { toggle.setValue(this.plugin.settings.autoConnect); new Notice("Could not save the startup preference."); }
+        catch { toggle.setValue(this.plugin.settings.autoConnect); new Notice("No se pudo guardar esta preferencia."); }
       }));
   }
 }

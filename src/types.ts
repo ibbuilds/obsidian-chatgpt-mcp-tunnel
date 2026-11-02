@@ -3,11 +3,13 @@ export interface TunnelSettings {
   tunnelId: string;
   mcpUrl: string;
   autoConnect: boolean;
+  /** Follow the local server's port and token unless the user overrides them. */
+  autoDetectLocal?: boolean;
   /** User acknowledgement, never a remote discovery check. */
   chatgptLinked?: boolean;
 }
 export const DEFAULT_SETTINGS: TunnelSettings = {
-  clientPath: "", tunnelId: "", mcpUrl: "http://127.0.0.1:8765/mcp", autoConnect: true,
+  clientPath: "", tunnelId: "", mcpUrl: "http://127.0.0.1:8765/mcp", autoConnect: true, autoDetectLocal: true,
 };
 export type ConnectionState = "not-configured" | "waiting-for-obsidian" | "starting" | "connecting" | "connected" | "stopping" | "existing-runtime" | "stopped" | "error";
 export interface ConnectionSnapshot {
@@ -25,8 +27,9 @@ export function normalizeSettings(value: unknown): TunnelSettings {
   return {
     clientPath: typeof raw.clientPath === "string" ? raw.clientPath.trim() : "",
     tunnelId: typeof raw.tunnelId === "string" ? raw.tunnelId.trim() : "",
-    mcpUrl: typeof raw.mcpUrl === "string" ? raw.mcpUrl.trim() : DEFAULT_SETTINGS.mcpUrl,
+    mcpUrl: typeof raw.mcpUrl === "string" && raw.mcpUrl.trim() ? raw.mcpUrl.trim() : DEFAULT_SETTINGS.mcpUrl,
     autoConnect: typeof raw.autoConnect === "boolean" ? raw.autoConnect : true,
+    autoDetectLocal: typeof raw.autoDetectLocal === "boolean" ? raw.autoDetectLocal : typeof raw.mcpUrl !== "string" || !raw.mcpUrl.trim() || raw.mcpUrl.trim() === DEFAULT_SETTINGS.mcpUrl,
     chatgptLinked: raw.chatgptLinked === true,
   };
 }

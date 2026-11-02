@@ -36,10 +36,11 @@ try {
 
   const require = createRequire(import.meta.url);
   const { installOfficialClient } = require(bundle);
+  const clientRoot = join(workspace, "plugin", "client");
 
   const executable = process.env.TUNNEL_CLIENT_SMOKE_PATH || await installOfficialClient((progress) => {
     console.log("Official client:", progress);
-  });
+  }, clientRoot);
   const sibling = join(dirname(executable), "cloudflared.exe");
   assert.equal((await stat(executable)).isFile(), true);
   assert.equal((await stat(sibling)).isFile(), true);
@@ -101,7 +102,7 @@ try {
   }
 
   if (!process.env.TUNNEL_CLIENT_SMOKE_PATH) {
-    const reused = await installOfficialClient();
+    const reused = await installOfficialClient(undefined, clientRoot);
     assert.equal(reused, executable, "Repeat installation should reuse the verified local bundle");
   }
   console.log("Official Windows client smoke test passed.");

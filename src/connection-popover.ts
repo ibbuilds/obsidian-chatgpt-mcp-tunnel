@@ -2,13 +2,7 @@ import { ButtonComponent, TextComponent, ToggleComponent, setIcon } from "obsidi
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
 import { firstScreen, popoverPosition, statusCopy, type Screen, type SetupFacts } from "./ui-model";
 import type { PopoverHost } from "./popover-host";
-
-const URLS = {
-  tunnels: "https://platform.openai.com/settings/organization/tunnels",
-  keys: "https://platform.openai.com/settings/organization/api-keys",
-  chatgpt: "https://chatgpt.com/#settings/Connectors",
-  vault: "obsidian://show-plugin?id=vault-as-mcp",
-};
+import { SETUP_URLS as URLS, CHATGPT_TEST_PROMPT } from "./setup-guide";
 let nextId = 0;
 
 /** Click-open, non-modal surface. Keep the editor usable and active forms intact. */
@@ -31,6 +25,7 @@ export class ConnectionPopover {
   private replaceKey = false;
   private returnScreen: Screen = "home";
   private accountBack: Screen = "client";
+  private clientBack: Screen | null = null;
   private statusUpdater: (() => void) | null = null;
   private validator: (() => void) | null = null;
   private submit: ButtonComponent | null = null;
@@ -47,6 +42,7 @@ export class ConnectionPopover {
     ++this.life; this.busy = false; this.screen = "loading";
     this.draftId = this.host.settings.tunnelId; this.draftEndpoint = this.host.settings.mcpUrl;
     this.replaceKey = false; this.pendingInstall = this.host.installing;
+    this.clientBack = null;
     this.focusOnPosition = true;
     const root = this.doc.createElement("div");
     root.className = "cmt-popover"; root.id = `cmt-popover-${++nextId}`;
@@ -114,7 +110,9 @@ export class ConnectionPopover {
       if (!this.root) return;
       const rect = this.root.getBoundingClientRect();
       const p = popoverPosition(this.anchor.getBoundingClientRect(), rect.width, rect.height, this.win.innerWidth, this.win.innerHeight);
-      this.root.style.left = `${p.left}px`; this.root.style.top = `${p.top}px`; this.root.style.visibility = "";
+      if (this.root.style.left !== `${p.left}px`) this.root.style.left = `${p.left}px`;
+      if (this.root.style.top !== `${p.top}px`) this.root.style.top = `${p.top}px`;
+      if (this.root.style.visibility) this.root.style.visibility = "";
       if (this.focusOnPosition) { this.focusOnPosition = false; this.root.focus({ preventScroll: true }); }
     });
   }
@@ -127,12 +125,12 @@ export class ConnectionPopover {
       this.go(firstScreen(facts, isValidTunnelId(this.host.settings.tunnelId), !!this.host.settings.chatgptLinked));
     } catch {
       if (!this.root || life !== this.life) return;
-      this.go("client"); this.showFeedback("Couldn't check the local connection. Check again or choose your client file.", true);
+      this.go("client"); this.showFeedback("No se pudo comprobar la conexión. Reintenta o selecciona el cliente local.", true);
     }
   }
   private go(screen: Screen, focus = false): void {
     this.screen = screen; this.render();
-    if (focus) this.root?.querySelector<HTMLElement>(".cmt-title")?.focus({ preventScroll: true });
+    if (focus) (this.root?.querySelector<HTMLElement>(".cmt-title") ?? this.root?.querySelector<HTMLElement>(".cmt-brand strong"))?.focus({ preventScroll: true });
   }
   private element<K extends keyof HTMLElementTagNameMap>(parent: HTMLElement, tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
     const node = this.doc.createElement(tag); node.className = cls;
@@ -143,19 +141,19 @@ export class ConnectionPopover {
   }
   private syncControls(): void {
     for (const [button, invalid] of this.buttons) {
-      button.disabled = invalid || (this.busy && button.dataset.allowBusy !== "true");
+      const disabled = invalid || (this.busy && button.dataset.allowBusy !== "true");
+      if (button.disabled !== disabled) button.disabled = disabled;
     }
-    this.root?.setAttribute("aria-busy", String(this.busy));
+    if (this.root?.getAttribute("aria-busy") !== String(this.busy)) this.root?.setAttribute("aria-busy", String(this.busy));
   }
   private button(parent: HTMLElement, label: string, action: () => void, kind = "secondary"): ButtonComponent {
     const button = new ButtonComponent(parent).setButtonText(label).onClick(action);
     button.buttonEl.type = "button"; button.buttonEl.classList.add("cmt-button", `cmt-${kind}`);
-    if (kind === "primary") button.setCta();
     this.buttons.set(button.buttonEl, false); return button;
   }
   private iconButton(parent: HTMLElement, icon: string, label: string, action: () => void, allowBusy = false): ButtonComponent {
     const button = new ButtonComponent(parent).setIcon(icon).setTooltip(label).onClick(action);
-    button.buttonEl.type = "button"; button.buttonEl.classList.add("cmt-icon-button");
+    button.buttonEl.type = "button"; button.buttonEl.classList.add("cmt-icon-button", "clickable-icon");
     button.buttonEl.setAttribute("aria-label", label);
     if (allowBusy) button.buttonEl.dataset.allowBusy = "true";
     this.buttons.set(button.buttonEl, false); return button;
@@ -166,13 +164,7 @@ export class ConnectionPopover {
   }
   private heading(step: number | null, title: string, description: string): void {
     if (step !== null) {
-      const progress = this.element(this.body!, "div", "cmt-progress");
-      progress.setAttribute("aria-label", `Setup step ${step} of 3`);
-      for (let i = 1; i <= 3; i++) {
-        const mark = this.element(progress, "span", i <= step ? "is-complete" : "");
-        mark.setAttribute("aria-hidden", "true");
-      }
-      this.element(this.body!, "div", "cmt-eyebrow", `STEP ${step} OF 3`);
+      this.element(this.body!, "p", "cmt-step", `Paso ${step} de 3`);
     }
     const h = this.element(this.body!, "h3", "cmt-title", title); h.tabIndex = -1;
     this.element(this.body!, "p", "cmt-description", description);
@@ -192,11 +184,11 @@ export class ConnectionPopover {
     input.inputEl.spellcheck = false; input.inputEl.autocomplete = "off";
     if (secret) {
       input.inputEl.type = "password"; input.inputEl.dataset.secret = "true";
-      const reveal = this.iconButton(inputWrap, "eye", `Show ${label.toLowerCase()}`, () => {
+      const reveal = this.iconButton(inputWrap, "eye", `Mostrar ${label.toLowerCase()}`, () => {
         const visible = input.inputEl.type === "password";
         input.inputEl.type = visible ? "text" : "password";
         reveal.setIcon(visible ? "eye-off" : "eye");
-        reveal.buttonEl.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${label.toLowerCase()}`);
+        reveal.buttonEl.setAttribute("aria-label", `${visible ? "Ocultar" : "Mostrar"} ${label.toLowerCase()}`);
         reveal.buttonEl.setAttribute("aria-pressed", String(visible));
       });
       reveal.buttonEl.setAttribute("aria-pressed", "false");
@@ -208,18 +200,18 @@ export class ConnectionPopover {
     this.statusUpdater = null; this.validator = null; this.submit = null; this.buttons.clear();
     root.replaceChildren(); root.dataset.screen = this.screen;
     const header = this.element(root, "header", "cmt-header");
-    if (this.screen === "settings" || this.screen === "account") {
-      this.iconButton(header, "arrow-left", "Back", () => this.go(this.screen === "settings" ? this.returnScreen : this.accountBack, true));
-    } else { const icon = this.element(header, "span", "cmt-brand-icon"); setIcon(icon, "plug-zap"); }
-    const brand = this.element(header, "div", "cmt-brand");
-    this.element(brand, "strong", "", "ChatGPT"); this.element(brand, "span", "cmt-muted", "MCP connection");
-    if (this.screen !== "settings" && this.screen !== "loading") {
-      this.iconButton(header, "settings-2", "Connection settings", () => { this.returnScreen = this.screen; this.go("settings", true); });
+    if (this.screen === "settings" || this.screen === "account" || this.screen === "chatgpt" || (this.screen === "client" && this.clientBack)) {
+      this.iconButton(header, "arrow-left", "Volver", () => this.go(this.screen === "settings" ? this.returnScreen : this.screen === "client" ? this.clientBack! : this.screen === "chatgpt" ? (this.host.settings.chatgptLinked ? "home" : "account") : this.accountBack, true));
     }
-    this.iconButton(header, "x", "Close", () => this.close(true), true);
+    const brand = this.element(header, "div", "cmt-brand");
+    this.element(brand, "strong", "", this.screen === "settings" ? "Opciones" : "ChatGPT").tabIndex = -1;
+    if (this.screen !== "settings" && this.screen !== "loading") {
+      this.iconButton(header, "settings-2", "Opciones", () => { this.returnScreen = this.screen; this.go("settings", true); });
+    }
+    this.iconButton(header, "x", "Cerrar", () => this.close(true), true);
     this.body = this.element(root, "div", "cmt-body");
     switch (this.screen) {
-      case "loading": this.element(this.body, "p", "cmt-description", "Checking your connection…"); break;
+      case "loading": this.element(this.body, "p", "cmt-description", "Comprobando conexión…"); break;
       case "client": this.renderClient(); break;
       case "account": this.renderAccount(); break;
       case "chatgpt": this.renderChatgpt(); break;
@@ -231,69 +223,85 @@ export class ConnectionPopover {
     this.syncControls(); this.schedulePosition();
   }
   private renderClient(): void {
-    this.heading(1, "Connect this vault", "Use the OpenAI client you already have, or install it here.");
+    this.heading(1, "Conexión local", "Prepara el cliente local y Vault as MCP para conectar esta bóveda.");
     const checks = this.element(this.body!, "div", "cmt-checks");
-    this.row(checks, "Vault as MCP", this.facts.vault === "running" ? "Running" : this.facts.vault === "authentication" ? "Token needed" : "Not running", this.facts.vault === "running");
-    this.row(checks, "OpenAI client", this.facts.client ? "Selected" : "Not selected", this.facts.client);
+    this.row(checks, "Vault as MCP", this.facts.vault === "running" ? "Activo" : this.facts.vault === "authentication" ? "Falta el token" : this.facts.vault === "missing" ? "Sin instalar" : this.facts.vault === "missing-tools" ? "Faltan herramientas" : this.facts.vault === "unexpected-server" ? "Revisar dirección" : "Detenido", this.facts.vault === "running");
+    this.row(checks, "Cliente local", this.facts.client ? "Seleccionado" : "Sin seleccionar", this.facts.client);
     if (this.facts.vault !== "running") {
       const help = this.element(this.body!, "p", "cmt-help");
       if (this.facts.vault === "authentication") {
-        help.textContent = "Add the local bearer token in connection settings.";
-      } else { help.textContent = "Start the local server first. "; this.link(help, "Open Vault as MCP ↗", URLS.vault); }
+        help.textContent = "Añade el token local en Opciones.";
+      } else if (this.facts.vault === "missing") {
+        help.textContent = "Instala y activa Vault as MCP. "; this.link(help, "Instalar Vault as MCP", URLS.vault);
+      } else {
+        help.textContent = this.facts.vault === "missing-tools" ? "Actualiza o reinicia Vault as MCP para recuperar sus herramientas. " : "Podemos iniciar el servidor local. ";
+        this.link(help, "Abrir Vault as MCP", URLS.vault);
+      }
     }
     const actions = this.element(this.body!, "div", "cmt-actions");
     if (this.host.installing) {
-      this.disable(this.button(actions, "Installing client…", () => undefined, "primary"), true);
-      this.element(actions, "p", "cmt-help", "You can close this popover. Installation will continue."); return;
+      this.disable(this.button(actions, "Instalando cliente…", () => undefined, "primary"), true);
+      this.element(actions, "p", "cmt-help", "Puedes cerrar el panel. La instalación continúa."); return;
+    }
+    if (!this.facts.client || this.facts.vault !== "running") {
+      this.button(actions, "Preparar conexión", () => void this.run("Preparando conexión…", async (live) => {
+        await this.host.prepareLocal(message => { if (live()) this.showFeedback(message, false); });
+        if (live()) await this.load();
+      }), "primary");
     }
     if (!this.facts.client) {
-      this.button(actions, "Find existing client", () => void this.run("Looking in common folders…", async (live) => {
+      const choice = this.element(actions, "details", "cmt-advanced cmt-client-choice");
+      this.element(choice, "summary", "", "Elegir cliente");
+      this.button(choice, "Buscar cliente", () => void this.run("Buscando cliente…", async (live) => {
         const found = await this.host.findClient(); const facts = await this.host.inspect();
         if (!live()) return; this.facts = facts; this.render();
-        if (!found) this.showFeedback("Not found in common folders. Choose tunnel-client.exe from its extracted folder.", false);
-      }), "primary");
-      const alternatives = this.element(actions, "div", "cmt-secondary-actions");
-      this.button(alternatives, "Choose file", () => void this.run("Select tunnel-client.exe…", async (live) => {
+        if (!found) this.showFeedback("Selecciona tunnel-client.exe desde la carpeta donde lo descargaste.", false);
+      }), "quiet");
+      const alternatives = this.element(choice, "div", "cmt-secondary-actions");
+      this.button(alternatives, "Seleccionar archivo", () => void this.run("Selecciona tunnel-client.exe…", async (live) => {
         const chosen = await this.host.chooseClient(this.doc);
         if (chosen) { const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); } }
       }), "quiet");
-      this.button(alternatives, "Install client", () => void this.run("Installing the official client…", async (live) => {
+      this.button(alternatives, "Instalar cliente", () => void this.run("Instalando cliente oficial…", async (live) => {
         await this.host.installClient((message) => { if (live()) this.showFeedback(message, false); });
         const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); }
       }), "quiet");
-      this.element(actions, "p", "cmt-footnote", "Choose tunnel-client.exe, not cloudflared.exe.");
+      this.element(choice, "p", "cmt-footnote", "Selecciona tunnel-client.exe, no cloudflared.exe. El cliente se guarda junto al plugin; las claves quedan cifradas fuera de la bóveda.");
     } else {
-      this.button(actions, this.facts.vault === "running" ? "Continue" : "Check again", () => {
+      this.button(actions, this.facts.vault === "running" ? "Continuar" : "Comprobar", () => {
         if (this.facts.vault !== "running") {
-          void this.run("Checking the local server…", async (live) => { const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); } });
+          void this.run("Comprobando servidor local…", async (live) => { const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); } });
         } else this.go(this.facts.key && isValidTunnelId(this.host.settings.tunnelId) ? (this.host.settings.chatgptLinked ? "home" : "chatgpt") : "account", true);
-      }, "primary");
-      this.button(actions, "Use a different client", () => void this.run("Select tunnel-client.exe…", async (live) => {
+      }, this.facts.vault === "running" ? "primary" : "quiet");
+      this.button(actions, "Cambiar cliente", () => void this.run("Selecciona tunnel-client.exe…", async (live) => {
         if (await this.host.chooseClient(this.doc)) { const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); } }
       }), "quiet");
     }
   }
   private renderAccount(): void {
-    this.heading(2, "Your OpenAI connection", "Reuse your existing Tunnel ID and runtime API key.");
+    this.heading(2, "Conexión de OpenAI", "Abre los enlaces para obtener el ID del túnel y su clave. Solo necesitas configurarlos una vez.");
     const validate = (): void => {
       if (!this.submit) return;
       const needsKey = !this.facts.key || this.replaceKey;
       this.disable(this.submit, !isValidTunnelId(this.draftId) || (needsKey && this.draftKey.trim().length < 16));
     };
-    const id = this.field(this.body!, "Tunnel ID", this.draftId, "tunnel_…", (value) => { this.draftId = value.trim(); validate(); });
+    const id = this.field(this.body!, "ID del túnel", this.draftId, "tunnel_…", (value) => { this.draftId = value.trim(); validate(); });
     id.inputEl.addEventListener("blur", () => id.inputEl.setAttribute("aria-invalid", String(!!this.draftId && !isValidTunnelId(this.draftId))));
-    const idHelp = this.element(this.body!, "p", "cmt-help"); this.link(idHelp, "Get a tunnel ID ↗", URLS.tunnels);
+    const idHelp = this.element(this.body!, "p", "cmt-help"); this.link(idHelp, "Crear o abrir túnel", URLS.tunnels);
+    idHelp.appendChild(this.doc.createTextNode(" Asócialo al espacio de ChatGPT que usarás y copia su ID."));
     if (this.facts.key && !this.replaceKey) {
       const saved = this.element(this.body!, "div", "cmt-saved");
-      this.element(saved, "span", "", "API key saved securely");
-      this.button(saved, "Replace", () => { this.replaceKey = true; this.render(); }, "quiet");
+      this.element(saved, "span", "", "Clave guardada");
+      this.button(saved, "Cambiar", () => { this.replaceKey = true; this.render(); }, "quiet");
     } else {
-      this.field(this.body!, "Runtime API key", this.draftKey, "Paste key once", (value) => { this.draftKey = value; validate(); }, true);
-      if (this.facts.key) this.button(this.body!, "Keep saved key", () => { this.replaceKey = false; this.draftKey = ""; this.render(); }, "quiet");
+      this.field(this.body!, "Clave de OpenAI", this.draftKey, "Pegar clave", (value) => { this.draftKey = value; validate(); }, true);
+      if (this.facts.key) this.button(this.body!, "Conservar clave", () => { this.replaceKey = false; this.draftKey = ""; this.render(); }, "quiet");
     }
-    const help = this.element(this.body!, "p", "cmt-help", "Permissions: Tunnels → Read + Use. "); this.link(help, "Create key ↗", URLS.keys);
+    const help = this.element(this.body!, "p", "cmt-help"); this.link(help, "Crear clave", URLS.keys);
+    help.appendChild(this.doc.createTextNode(" Usa la misma organización. Selecciona Restricted y Tunnels → Read + Use. Copia la clave antes de cerrar la página."));
+    const guide = this.element(this.body!, "p", "cmt-help"); this.link(guide, "Guía de OpenAI", URLS.guide);
     const actions = this.element(this.body!, "div", "cmt-actions");
-    this.submit = this.button(actions, "Save & connect", () => void this.run("Saving connection…", async (live) => {
+    this.submit = this.button(actions, "Guardar y conectar", () => void this.run("Guardando conexión…", async (live) => {
       const id = this.draftId, key = this.replaceKey || !this.facts.key ? this.draftKey : "";
       await this.host.saveAccount(id, key);
       // Dismissal closes only the UI, not an explicitly requested connection.
@@ -305,49 +313,59 @@ export class ConnectionPopover {
       await connecting; if (live()) this.updateConnection();
     }), "primary");
     this.validator = validate; validate();
-    this.element(actions, "p", "cmt-footnote", "Encrypted by Windows. Never stored in your vault.");
+    this.element(actions, "p", "cmt-footnote", "La clave queda cifrada por Windows, fuera de la bóveda.");
   }
   private renderChatgpt(): void {
-    this.heading(3, "Finish in ChatGPT", "Add an MCP connection, choose Tunnel, and use this ID.");
+    this.heading(3, "Configurar ChatGPT", "En ChatGPT, abre Plugins → + → Add custom MCP server. Usa el nombre Obsidian, elige Tunnel y pega este ID.");
     const copy = this.element(this.body!, "div", "cmt-copy-row");
     this.element(copy, "code", "", this.host.settings.tunnelId);
-    this.iconButton(copy, "copy", "Copy Tunnel ID", () => void this.run("", async (live) => {
+    this.iconButton(copy, "copy", "Copiar ID", () => void this.run("", async (live) => {
       await this.win.navigator.clipboard.writeText(this.host.settings.tunnelId);
-      if (live()) this.showFeedback("Tunnel ID copied.", false);
+      if (live()) this.showFeedback("ID copiado.", false);
     }));
     const status = this.element(this.body!, "p", "cmt-help"); status.setAttribute("role", "status");
     const actions = this.element(this.body!, "div", "cmt-actions");
-    this.button(actions, "Open ChatGPT ↗", () => this.openPage(URLS.chatgpt), "primary");
-    const retry = this.button(actions, "Connect tunnel", () => {
+    this.button(actions, "Abrir ChatGPT", () => this.openPage(URLS.chatgpt), "primary");
+    this.element(actions, "p", "cmt-help", "Elige No authentication: el puente gestiona el token local. Crea e instala el plugin, abre un chat nuevo y selecciona @Obsidian.");
+    this.button(actions, "Copiar prueba", () => void this.run("", async (live) => {
+      await this.win.navigator.clipboard.writeText(CHATGPT_TEST_PROMPT);
+      if (live()) this.showFeedback("Prueba copiada. Pégala en ChatGPT para comprobar la lectura sin cambiar notas.", false);
+    }), "quiet");
+    const troubleshooting = this.element(actions, "details", "cmt-advanced");
+    this.element(troubleshooting, "summary", "", "¿No aparece el túnel?");
+    this.element(troubleshooting, "p", "cmt-help", "Usa la cuenta y el espacio de ChatGPT asociados al túnel, con permisos Tunnels → Read + Use. Mantén Obsidian abierto.");
+    this.link(troubleshooting, "Revisar túnel", URLS.tunnels);
+    const retry = this.button(actions, "Conectar", () => {
       const s = this.host.snapshot;
       if (s.managed || s.state === "starting" || s.state === "connecting") this.host.disconnect();
-      else void this.run("Connecting…", async (live) => { await this.host.connect(); if (live()) this.updateConnection(); });
+      else void this.run("Conectando…", async (live) => { await this.host.connect(); if (live()) this.updateConnection(); });
     }, "quiet");
     retry.buttonEl.dataset.allowBusy = "true";
-    this.button(actions, "I've already added this tunnel", () => void this.run("", async (live) => {
+    this.button(actions, "Ya lo añadí", () => void this.run("", async (live) => {
       await this.host.acknowledgeChatgpt(); if (live()) this.go("home", true);
     }), "quiet");
+    this.element(actions, "p", "cmt-footnote", "Este botón guarda tu confirmación. Ejecuta la prueba en ChatGPT para verificar el acceso.");
     this.statusUpdater = () => {
       const s = this.host.snapshot, ready = s.state === "connected";
-      status.textContent = ready ? "Local tunnel ready. You can now add it in ChatGPT." : s.detail;
+      status.textContent = ready ? "El puente local está disponible. Añade el plugin en ChatGPT y ejecuta la prueba." : s.detail;
       status.classList.toggle("is-error", s.state === "error");
       // Checking ChatGPT settings must remain available even when the local
       // tunnel is temporarily offline; connector registration still needs readiness.
       retry.buttonEl.hidden = ready;
-      retry.setButtonText(s.state === "starting" || s.state === "connecting" ? "Cancel connection" : s.state === "stopping" ? "Stopping…" : "Connect tunnel");
+      retry.setButtonText(s.state === "starting" || s.state === "connecting" ? "Cancelar" : s.state === "stopping" ? "Desconectando…" : "Conectar");
       this.disable(retry, s.state === "stopping");
     }; this.statusUpdater();
   }
   private renderHome(): void {
-    const hero = this.element(this.body!, "div", "cmt-status-heading");
-    const icon = this.element(hero, "span", "cmt-state-icon");
-    const title = this.element(hero, "h3", "cmt-title"); title.tabIndex = -1;
+    const line = this.element(this.body!, "div", "cmt-source-line");
+    this.element(line, "strong", "", "Conexión local");
+    const title = this.element(line, "span", "cmt-source-status cmt-title"); title.tabIndex = -1;
     const detail = this.element(this.body!, "p", "cmt-description"); detail.setAttribute("role", "status");
-    const checks = this.element(this.body!, "div", "cmt-checks");
     const retryInfo = this.element(this.body!, "p", "cmt-help");
     const actions = this.element(this.body!, "div", "cmt-actions");
-    const action = this.button(actions, "Connect", () => {
+    const action = this.button(actions, "Conectar", () => {
       const s = this.host.snapshot;
+      if (s.state === "connected") { this.openPage(URLS.chat); return; }
       if (s.managed || s.state === "starting" || s.state === "connecting") { this.host.disconnect(); return; }
       void this.run("", async (live) => {
         if (this.host.snapshot.state === "not-configured") await this.load();
@@ -356,57 +374,77 @@ export class ConnectionPopover {
       });
     }, "primary");
     action.buttonEl.dataset.allowBusy = "true";
-    const edit = this.button(actions, "Review connection details", () => { this.accountBack = "home"; this.go("account", true); }, "quiet");
-    const footer = this.element(actions, "p", "cmt-footnote"); this.link(footer, "Open ChatGPT ↗", URLS.chatgpt);
+    const test = this.button(this.body!, "Probar en ChatGPT", () => this.go("chatgpt", true), "nav");
+    const chevron = this.element(test.buttonEl, "span", "cmt-chevron"); setIcon(chevron, "chevron-right");
     let previous = "";
     this.statusUpdater = () => {
       const s = this.host.snapshot, copy = statusCopy(s);
+      const key = JSON.stringify([s, this.host.settings.autoConnect, this.host.settings.chatgptLinked]);
+      if (previous === key) return;
+      previous = key;
       title.textContent = copy.title; detail.textContent = copy.text;
-      if (previous !== s.state) {
-        previous = s.state; setIcon(icon, s.state === "connected" ? "check-circle-2" : s.state === "error" ? "circle-alert" : "plug-zap");
-      }
-      hero.dataset.state = s.state; action.setButtonText(copy.action);
-      action.buttonEl.classList.toggle("mod-cta", !s.managed);
+      line.dataset.state = s.state; action.setButtonText(copy.action);
       this.disable(action, s.state === "stopping");
-      edit.buttonEl.hidden = s.state !== "error" && s.state !== "not-configured";
-      retryInfo.hidden = !s.retryAt; retryInfo.textContent = s.retryAt ? "Automatic retry scheduled. You can also retry now." : "";
-      checks.replaceChildren();
-      this.row(checks, "Local tunnel", s.state === "connected" ? "Ready" : s.state === "stopping" ? "Stopping" : s.managed ? "Starting" : "Stopped", s.state === "connected");
-      this.row(checks, "Start with Obsidian", this.host.settings.autoConnect ? "On" : "Off", this.host.settings.autoConnect);
+      retryInfo.hidden = !s.retryAt; retryInfo.textContent = s.retryAt ? "Se reintentará automáticamente. También puedes reintentar ahora." : "";
     }; this.statusUpdater();
   }
   private renderSettings(): void {
-    this.heading(null, "Connection settings", "Keep the everyday connection simple. Adjust details here.");
     const auto = this.element(this.body!, "div", "cmt-preference");
-    const label = this.element(auto, "label", "cmt-label", "Start with Obsidian");
+    const label = this.element(auto, "label", "cmt-label", "Iniciar con Obsidian");
     const toggle = new ToggleComponent(auto).setValue(this.host.settings.autoConnect).onChange((value) => {
       if (this.busy) { toggle.setValue(this.host.settings.autoConnect); return; }
       void this.run("", async () => { try { await this.host.setAutoConnect(value); } catch (error) { toggle.setValue(this.host.settings.autoConnect); throw error; } });
     });
     toggle.toggleEl.setAttribute("aria-label", label.textContent!);
     const links = this.element(this.body!, "div", "cmt-settings-actions");
-    this.button(links, "Edit OpenAI details", () => { this.accountBack = "settings"; this.go("account", true); }, "quiet");
-    this.button(links, "Change tunnel client", () => this.go("client", true), "quiet");
+    this.button(links, "Datos de conexión", () => { this.accountBack = "settings"; this.go("account", true); }, "quiet");
+    this.button(links, "Cliente local", () => { this.clientBack = "settings"; this.go("client", true); }, "quiet");
+    this.button(links, "Reparar conexión", () => void this.run("Comprobando conexión local…", async (live) => {
+      await this.host.prepareLocal(message => { if (live()) this.showFeedback(message, false); });
+      if (live()) await this.load();
+    }), "quiet");
+    const disconnect = this.button(links, "Desconectar", () => this.host.disconnect(), "quiet");
+    disconnect.buttonEl.dataset.allowBusy = "true";
     const advanced = this.element(this.body!, "details", "cmt-advanced");
-    this.element(advanced, "summary", "", "Local MCP settings");
-    const endpoint = this.field(advanced, "Local endpoint", this.draftEndpoint, "http://127.0.0.1:8765/mcp", (value) => { this.draftEndpoint = value; });
-    const token = this.field(advanced, "Local bearer token (optional)", this.draftToken, this.facts.token ? "Saved — leave blank to keep" : "Only if enabled in Vault as MCP", (value) => { this.draftToken = value; }, true);
-    const save = this.button(advanced, "Save local settings", () => void this.run("Saving local settings…", async (live) => {
-      if (!parseLocalMcpEndpoint(this.draftEndpoint)) throw new Error("Use a loopback HTTP address with a port and /mcp path.");
+    this.element(advanced, "summary", "", "MCP local");
+    this.element(advanced, "p", "cmt-help", this.host.settings.autoDetectLocal ? "La dirección y el token se detectan desde Vault as MCP. Si guardas otros valores, se usarán tus ajustes manuales." : "Estás usando ajustes manuales. Puedes volver a la detección automática.");
+    this.button(advanced, "Detectar automáticamente", () => void this.run("Detectando Vault as MCP…", async (live) => {
+      await this.host.useAutomaticLocal();
+      if (live()) { this.draftEndpoint = this.host.settings.mcpUrl; this.facts = await this.host.inspect(); if (live()) this.render(); }
+    }), "quiet");
+    const endpoint = this.field(advanced, "Dirección local", this.draftEndpoint, "http://127.0.0.1:8765/mcp", (value) => { this.draftEndpoint = value; });
+    const token = this.field(advanced, "Token local (opcional)", this.draftToken, this.facts.token ? "Guardado; deja vacío para conservarlo" : "Solo si Vault as MCP lo requiere", (value) => { this.draftToken = value; }, true);
+    const save = this.button(advanced, "Guardar ajustes", () => void this.run("Guardando ajustes…", async (live) => {
+      if (!parseLocalMcpEndpoint(this.draftEndpoint)) throw new Error("Usa una dirección HTTP local con puerto y ruta /mcp.");
       await this.host.saveLocal(this.draftEndpoint, this.draftToken);
       const facts = await this.host.inspect(); if (!live()) return;
-      this.facts = facts; this.draftToken = ""; token.setValue(""); this.showFeedback("Local settings saved.", false);
+      this.facts = facts; this.draftToken = ""; token.setValue(""); this.showFeedback("Ajustes guardados.", false);
     }));
     endpoint.inputEl.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing && !this.busy) { event.preventDefault(); save.buttonEl.click(); } });
-    if (this.facts.token) this.button(advanced, "Remove local token", () => void this.run("Removing token…", async (live) => {
+    if (this.facts.token) this.button(advanced, "Eliminar token local", () => void this.run("Eliminando token…", async (live) => {
       await this.host.forgetToken(); if (!live()) return;
-      this.facts.token = false; this.draftToken = ""; token.setValue(""); this.showFeedback("Local token removed.", false);
+      this.facts.token = false; this.draftToken = ""; token.setValue(""); this.showFeedback("Token eliminado.", false);
     }), "quiet");
-    const path = this.element(advanced, "p", "cmt-help", "Client: "); this.element(path, "code", "cmt-path", this.host.settings.clientPath || "Not selected");
-    if (this.host.snapshot.dashboardUrl) this.link(advanced, "Open local diagnostics ↗", this.host.snapshot.dashboardUrl);
-    const remove = this.element(this.body!, "details", "cmt-advanced"); this.element(remove, "summary", "", "Remove saved API key");
-    this.element(remove, "p", "cmt-help", "Disconnects this tunnel and removes the saved runtime key.");
-    this.button(remove, "Remove key", () => void this.run("Removing key…", async (live) => {
+    const path = this.element(advanced, "p", "cmt-help", "Cliente: "); this.element(path, "code", "cmt-path", this.host.settings.clientPath || "Sin seleccionar");
+    if (this.host.snapshot.dashboardUrl) this.link(advanced, "Abrir diagnóstico local", this.host.snapshot.dashboardUrl);
+    const diagnostics = this.element(this.body!, "details", "cmt-advanced"); this.element(diagnostics, "summary", "", "Diagnóstico");
+    const checks = this.element(diagnostics, "div", "cmt-checks");
+    const report = this.element(diagnostics, "p", "cmt-help");
+    let previous = "";
+    this.statusUpdater = () => {
+      const s = this.host.snapshot, key = JSON.stringify([s, this.facts, this.host.settings.autoConnect, this.host.settings.chatgptLinked]);
+      if (previous === key) return; previous = key;
+      disconnect.buttonEl.hidden = !s.managed && s.state !== "starting" && s.state !== "connecting";
+      this.disable(disconnect, s.state === "stopping");
+      report.textContent = s.detail; checks.replaceChildren();
+      this.row(checks, "Túnel local", statusCopy(s).title, s.state === "connected");
+      this.row(checks, "Herramientas MCP", s.state === "connected" && this.facts.toolCount ? String(this.facts.toolCount) : "Por comprobar", s.state === "connected" && !!this.facts.toolCount);
+      this.row(checks, "ChatGPT", this.host.settings.chatgptLinked ? "Marcado como añadido" : "Sin configurar", !!this.host.settings.chatgptLinked);
+      this.row(checks, "Iniciar con Obsidian", this.host.settings.autoConnect ? "Activado" : "Desactivado", this.host.settings.autoConnect);
+    }; this.statusUpdater();
+    const remove = this.element(this.body!, "details", "cmt-advanced"); this.element(remove, "summary", "", "Eliminar clave de OpenAI");
+    this.element(remove, "p", "cmt-help", "Desconecta el túnel y elimina la clave guardada.");
+    this.button(remove, "Eliminar clave", () => void this.run("Eliminando clave…", async (live) => {
       await this.host.forgetKey(); if (!live()) return;
       this.facts.key = false; this.draftKey = ""; this.replaceKey = false; this.accountBack = "settings"; this.go("account", true);
     })).setWarning();
@@ -426,7 +464,7 @@ export class ConnectionPopover {
       await action(live);
       if (live() && message && this.feedback?.textContent === message) this.showFeedback("", false);
     } catch (error) {
-      if (live()) this.showFeedback(error instanceof Error ? error.message : "Something went wrong. Try again.", true);
+      if (live()) this.showFeedback(error instanceof Error ? error.message : "No se pudo completar la acción. Vuelve a intentarlo.", true);
     } finally {
       if (live()) { this.busy = false; this.validator?.(); this.updateConnection(); }
     }

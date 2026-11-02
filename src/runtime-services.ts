@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import { connect } from "node:net";
 import { validateClientExecutable } from "./binaries";
-import { probeVaultMcp } from "./mcp-probe";
+import { probeVaultMcp, probeVaultTools } from "./mcp-probe";
 import { probeLocalHttp } from "./network";
 import { clientEnvironment } from "./runtime-environment";
 import type { TunnelSettings } from "./types";
@@ -10,6 +10,8 @@ import type { TunnelSettings } from "./types";
 export interface RuntimeServices {
   validate(path: string): Promise<void>;
   probe(endpoint: string, token?: string): ReturnType<typeof probeVaultMcp>;
+  checkTools?(endpoint: string, token?: string): ReturnType<typeof probeVaultMcp>;
+  ensureLocalServer?(): Promise<void>;
   http(url: URL): Promise<number | null>;
   portOpen(port: number): Promise<boolean>;
   launch(config: TunnelSettings, key: string, token?: string): ChildProcess;
@@ -80,6 +82,7 @@ export function stopOwnedProcess(child: ChildProcess): Promise<void> {
 export const runtimeServices: RuntimeServices = {
   validate: validateClientExecutable,
   probe: probeVaultMcp,
+  checkTools: probeVaultTools,
   http: (url) => probeLocalHttp(url),
   portOpen,
   launch: (config, key, token) => spawn(config.clientPath, clientLaunchArguments(), {

@@ -28,6 +28,7 @@ export class TunnelManager {
   private launchedAt = 0;
   private healthyAt: number | null = null;
   private firstHealthyAt: number | null = null;
+  private localToken: string | undefined;
   private readonly io: RuntimeServices;
   private current: ConnectionSnapshot = { state: "stopped", detail: "Not running", managed: false };
 
@@ -151,7 +152,12 @@ export class TunnelManager {
     if (!hasKey) { this.update("not-configured", "Save the runtime API key"); return; }
     await this.io.validate(config.clientPath);
     if (!this.live(run)) return;
-    const result = await this.io.probe(config.mcpUrl);
+    let result = await this.io.probe(config.mcpUrl);
+    if (result === "unavailable" && this.io.ensureLocalServer) {
+      await this.io.ensureLocalServer();
+      if (!this.live(run)) return;
+      result = await this.io.probe(config.mcpUrl);
+    }
     if (!this.live(run)) return;
     if (result === "unavailable") { this.update("waiting-for-obsidian", "Waiting for the local Vault as MCP server"); return; }
     if (result === "unexpected-server") {
@@ -170,6 +176,15 @@ export class TunnelManager {
       if (auth !== "ready") {
         this.fail({ message: "The local MCP token was rejected or the server could not be verified. Check connection settings.", retryable: false }); return;
       }
+    }
+    const tools = await (this.io.checkTools ?? this.io.probe)(config.mcpUrl, token);
+    if (!this.live(run)) return;
+    if (tools !== "ready") {
+      this.fail({ message: tools === "missing-tools"
+        ? "Vault as MCP is responding but its note tools are missing. Update or restart Vault as MCP."
+        : tools === "authentication-required" ? "The local MCP token was rejected. Review the local connection settings."
+        : "Could not discover Vault as MCP tools. Check the local connection and retry.", retryable: tools === "unavailable" });
+      return;
     }
     const occupied = await this.io.portOpen(8766);
     if (!this.live(run)) return;
@@ -190,6 +205,7 @@ export class TunnelManager {
     const key = await this.secrets.readKey();
     if (!this.live(run)) return;
     const child = this.io.launch(config, key, token);
+    this.localToken = token;
     const output = new RuntimeOutput();
     this.child = child;
     this.launchedAt = this.io.now(); this.healthyAt = null; this.firstHealthyAt = null; this.retryAt = 0;
@@ -219,7 +235,21 @@ export class TunnelManager {
     if (this.child !== child || this.retiring.has(child) || !this.live(run)) return;
     const now = this.io.now();
     if (code === 200) {
+      let local = await this.io.probe(this.settings().mcpUrl, this.localToken);
+      if (this.child !== child || this.retiring.has(child) || !this.live(run)) return;
+      if (local === "unavailable" && this.io.ensureLocalServer) {
+        await this.io.ensureLocalServer();
+        if (this.child !== child || this.retiring.has(child) || !this.live(run)) return;
+        local = await this.io.probe(this.settings().mcpUrl, this.localToken);
+        if (this.child !== child || this.retiring.has(child) || !this.live(run)) return;
+      }
       this.healthyAt = now;
+      if (local !== "ready") {
+        this.update("waiting-for-obsidian", local === "authentication-required"
+          ? "Vault as MCP rejected the saved token. Use Set up local connection to detect its current settings."
+          : "The tunnel is running, but the local vault server is unavailable. It will resume when Vault as MCP is ready.", true);
+        return;
+      }
       this.firstHealthyAt ??= now;
       if (now - this.firstHealthyAt >= 20_000) this.failures = 0;
       this.update("connected", "Local tunnel ready", true); return;

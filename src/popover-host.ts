@@ -6,6 +6,8 @@ export interface PopoverHost {
   readonly settings: TunnelSettings;
   readonly snapshot: ConnectionSnapshot;
   readonly installing: boolean;
+  prepareLocal(progress: (message: string) => void): Promise<void>;
+  useAutomaticLocal(): Promise<void>;
   inspect(): Promise<SetupFacts>;
   findClient(): Promise<boolean>;
   installClient(progress: (message: string) => void): Promise<void>;

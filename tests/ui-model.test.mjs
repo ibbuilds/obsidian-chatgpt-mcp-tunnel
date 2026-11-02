@@ -35,10 +35,10 @@ test("popover stays inside small viewports and can open below a top anchor", () 
 
 test("status distinguishes ready, stopped, errors and external processes", () => {
   const copy = (state, detail = "Check local settings") => statusCopy({ state, detail, managed: state === "connected" });
-  assert.equal(copy("connected").title, "Tunnel ready");
-  assert.equal(copy("stopped").action, "Connect");
-  assert.equal(copy("connecting").action, "Cancel");
-  assert.equal(copy("existing-runtime").title, "Another client is running");
-  assert.equal(copy("error", "Not authorized").text, "Not authorized");
-  assert.equal(copy("not-configured").action, "Continue setup");
+  assert.equal(copy("connected").title, "Disponible");
+  assert.equal(copy("stopped").action, "Conectar");
+  assert.equal(copy("connecting").action, "Cancelar");
+  assert.equal(copy("existing-runtime").title, "Cliente en uso");
+  assert.match(copy("error", "Not authorized").text, /diagnóstico en Opciones/);
+  assert.equal(copy("not-configured").action, "Configurar");
 });

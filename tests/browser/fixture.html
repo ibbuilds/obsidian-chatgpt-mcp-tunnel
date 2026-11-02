@@ -23,6 +23,8 @@ window.host = {
  settings: {clientPath:'',tunnelId:'',mcpUrl:'http://127.0.0.1:8765/mcp',autoConnect:true,chatgptLinked:false},
  snapshot: {state:'not-configured',detail:'Complete setup to connect',managed:false},installing:false,
  inspect: async()=>({...window.facts}),
+ prepareLocal:async(progress)=>{progress('Preparing…');window.facts.client=true;window.facts.vault='running';window.facts.toolCount=13;},
+ useAutomaticLocal:async()=>{host.settings.autoDetectLocal=true;},
  findClient: async()=>{window.facts.client=true;host.settings.clientPath='C:\\OpenAI\\tunnel-client.exe';return true;},
  installClient:async(progress)=>{progress('Downloading…');window.facts.client=true;},
  chooseClient:async()=>{window.facts.client=true;return true;},
