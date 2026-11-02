@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { firstScreen, popoverPosition, statusCopy } from "../src/ui-model.ts";
+import { firstScreen, popoverPosition, statusCopy, connectionChecks, connectionIndicator, needsLocalRepair } from "../src/ui-model.ts";
 
 const complete = { client: true, key: true, vault: "running", token: false };
 test("setup skips completed steps and never assumes ChatGPT registration", () => {
@@ -10,7 +10,36 @@ test("setup skips completed steps and never assumes ChatGPT registration", () =>
   assert.equal(firstScreen(complete, true, false), "chatgpt");
   assert.equal(firstScreen(complete, true, true), "home");
   for (const vault of ["missing", "stopped", "authentication"]) {
-    assert.equal(firstScreen({ ...complete, vault }, true, true), "client");
+    assert.equal(firstScreen({ ...complete, vault }, true, false), "client");
+  }
+});
+test("an existing configured connection stays on recovery when its local server stops", () => {
+  assert.equal(firstScreen({...complete,vault:"stopped"},true,true),"home");
+  assert.equal(firstScreen({...complete,vault:"stopped",key:false},true,true),"client");
+});
+test("the two essential checks identify a local server failure while its tunnel still responds", () => {
+  const state={state:"waiting-for-obsidian",managed:true,detail:"Local MCP unavailable"};
+  const health=connectionChecks(state,complete);
+  assert.equal(health.tunnel.value,"Listo");assert.equal(health.tunnel.tone,"ok");
+  assert.equal(health.server.value,"No disponible");assert.equal(health.server.tone,"warning");
+  assert.equal(statusCopy(state).action,"Reparar conexión");
+  assert.equal(connectionChecks({...state,managed:false},complete).tunnel.value,"Desconectado");
+});
+test("setup detection alone never becomes a live ready check", () => {
+  const stopped=connectionChecks({state:"stopped",managed:false,detail:"Stopped"},complete);
+  assert.equal(stopped.server.value,"Detectado");assert.equal(stopped.server.tone,"neutral");
+  const error=connectionChecks({state:"error",managed:false,detail:"Rejected"},complete);
+  assert.equal(error.tunnel.tone,"error");assert.notEqual(error.server.tone,"ok");
+  const live=connectionChecks({state:"connected",managed:true,detail:"Ready"},complete);
+  assert.equal(live.server.tone,"ok");assert.equal(live.tunnel.tone,"ok");
+  const inspectedFailure=connectionChecks({state:"connected",managed:true,detail:"Ready"},{...complete,vault:"stopped"});
+  assert.equal(inspectedFailure.server.tone,"warning");
+  assert.equal(needsLocalRepair({state:"connected",managed:true,detail:"Ready"},{...complete,vault:"stopped"}),true);
+});
+test("the compact indicator uses shape and semantic colour and never marks a failed connection ready", () => {
+  assert.deepEqual(connectionIndicator({state:"connected",managed:true,detail:"Ready"}),{icon:"plug-zap",tone:"ok"});
+  for(const state of ["stopped","starting","connecting","stopping","error","waiting-for-obsidian","existing-runtime","not-configured"]){
+    assert.notEqual(connectionIndicator({state,managed:false,detail:""}).tone,"ok");
   }
 });
 
@@ -39,6 +68,6 @@ test("status distinguishes ready, stopped, errors and external processes", () =>
   assert.equal(copy("stopped").action, "Conectar");
   assert.equal(copy("connecting").action, "Cancelar");
   assert.equal(copy("existing-runtime").title, "Cliente en uso");
-  assert.match(copy("error", "Not authorized").text, /diagnóstico en Opciones/);
+  assert.match(copy("error", "Not authorized").text, /detalle del fallo/);
   assert.equal(copy("not-configured").action, "Configurar");
 });

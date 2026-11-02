@@ -8,7 +8,7 @@ Click **ChatGPT** at the bottom right. A compact popover opens directly above th
 
 There is **no sidebar, no modal, no dimming and no editor resizing**. The popover uses Obsidian buttons, inputs, icons and theme variables. Keyboard users can open it with Enter or Space; Escape returns focus to the indicator. Clicking the editor does not steal focus back.
 
-The status bar shows only **ChatGPT**, immediately before Source Scraper, with readiness in its tooltip. The everyday panel uses the same 360px width, header, native theme and control sizing as Source Scraper: local state, one action and a short navigation row. Once ready, **Abrir ChatGPT** opens ChatGPT directly; **Probar en ChatGPT** opens the registration and read-only test guide. **Opciones** contains startup, connection details, client selection, repair, disconnect and collapsed local MCP/diagnostic controls. Labels are in Spanish. Local readiness never claims that ChatGPT has discovered or successfully used the connector.
+The status bar shows **ChatGPT** with a compact native icon indicating ready, connecting, stopped or failed state. Its width stays stable as state changes. The panel shares Source Scraper's 360px native surface and header, and shows **Túnel local** and **Servidor MCP** separately. Ready opens ChatGPT; **Probar conexión** opens the registration and read-only test guide. A local server failure offers **Reparar conexión** immediately, with safe failure details on the same screen. **Opciones** retains startup, account/client settings, disconnect and advanced diagnostics. Local readiness never claims successful tool discovery or use in ChatGPT.
 
 ## Configure once
 

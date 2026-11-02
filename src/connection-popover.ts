@@ -1,6 +1,6 @@
 import { ButtonComponent, TextComponent, ToggleComponent, setIcon } from "obsidian";
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
-import { firstScreen, popoverPosition, statusCopy, type Screen, type SetupFacts } from "./ui-model";
+import { firstScreen, popoverPosition, statusCopy, connectionChecks, needsLocalRepair, type ConnectionCheck, type Screen, type SetupFacts } from "./ui-model";
 import type { PopoverHost } from "./popover-host";
 import { SETUP_URLS as URLS, CHATGPT_TEST_PROMPT } from "./setup-guide";
 let nextId = 0;
@@ -26,6 +26,8 @@ export class ConnectionPopover {
   private returnScreen: Screen = "home";
   private accountBack: Screen = "client";
   private clientBack: Screen | null = null;
+  private observedState = "";
+  private connectionRevision = 0;
   private statusUpdater: (() => void) | null = null;
   private validator: (() => void) | null = null;
   private submit: ButtonComponent | null = null;
@@ -43,6 +45,7 @@ export class ConnectionPopover {
     this.draftId = this.host.settings.tunnelId; this.draftEndpoint = this.host.settings.mcpUrl;
     this.replaceKey = false; this.pendingInstall = this.host.installing;
     this.clientBack = null;
+    this.observedState = this.host.snapshot.state; ++this.connectionRevision;
     this.focusOnPosition = true;
     const root = this.doc.createElement("div");
     root.className = "cmt-popover"; root.id = `cmt-popover-${++nextId}`;
@@ -93,11 +96,24 @@ export class ConnectionPopover {
   }
   updateConnection(): void {
     if (!this.root) return;
+    const state = this.host.snapshot.state;
+    if (state !== this.observedState) {
+      this.observedState = state; ++this.connectionRevision;
+      if (state === "connected" && this.facts.vault !== "running" && this.screen === "home" && !this.busy) void this.refreshFacts();
+    }
     if (this.pendingInstall && !this.host.installing && !this.busy && this.screen === "client") {
       this.pendingInstall = false; void this.load(); return;
     }
     this.pendingInstall = this.host.installing;
     this.statusUpdater?.(); this.syncControls(); this.schedulePosition();
+  }
+  private async refreshFacts(): Promise<void> {
+    const life = this.life, revision = this.connectionRevision;
+    try {
+      const facts = await this.host.inspect();
+      if (!this.root || life !== this.life || revision !== this.connectionRevision) return;
+      this.facts = facts; this.updateConnection();
+    } catch { /* Keep the last inspected failure visible; never infer readiness from a failed check. */ }
   }
   private listen(target: EventTarget, name: string, listener: EventListener, capture = false): void {
     target.addEventListener(name, listener, capture);
@@ -357,14 +373,24 @@ export class ConnectionPopover {
     }; this.statusUpdater();
   }
   private renderHome(): void {
-    const line = this.element(this.body!, "div", "cmt-source-line");
-    this.element(line, "strong", "", "Conexión local");
-    const title = this.element(line, "span", "cmt-source-status cmt-title"); title.tabIndex = -1;
+    const title = this.element(this.body!, "span", "cmt-home-state");title.setAttribute("role","status");
+    const checks = this.element(this.body!, "div", "cmt-essential-checks");checks.setAttribute("aria-label","Estado de la conexión local");
+    const rows = ["tunnel","server"].map(key=>{
+      const row = this.element(checks,"div","cmt-check-row");row.dataset.check = key;
+      const icon = this.element(row,"span","cmt-check");icon.setAttribute("aria-hidden","true");
+      const label = this.element(row,"span","cmt-check-label"),value = this.element(row,"span","cmt-check-value");
+      return (data:ConnectionCheck)=>{row.dataset.tone=data.tone;setIcon(icon,data.icon);label.textContent=data.label;value.textContent=data.value;};
+    });
     const detail = this.element(this.body!, "p", "cmt-description"); detail.setAttribute("role", "status");
+    const problem = this.element(this.body!,"details","cmt-problem");this.element(problem,"summary","","Detalles del fallo");
+    const report = this.element(problem,"p","cmt-help");
     const retryInfo = this.element(this.body!, "p", "cmt-help");
     const actions = this.element(this.body!, "div", "cmt-actions");
     const action = this.button(actions, "Conectar", () => {
       const s = this.host.snapshot;
+      if (needsLocalRepair(s,this.facts)) {
+        void this.run("Reparando conexión…",async(live)=>{await this.host.prepareLocal(message=>{if(live())this.showFeedback(message,false);});if(live())await this.load();});return;
+      }
       if (s.state === "connected") { this.openPage(URLS.chat); return; }
       if (s.managed || s.state === "starting" || s.state === "connecting") { this.host.disconnect(); return; }
       void this.run("", async (live) => {
@@ -374,17 +400,21 @@ export class ConnectionPopover {
       });
     }, "primary");
     action.buttonEl.dataset.allowBusy = "true";
-    const test = this.button(this.body!, "Probar en ChatGPT", () => this.go("chatgpt", true), "nav");
+    const test = this.button(this.body!, "Probar conexión", () => this.go("chatgpt", true), "nav");
     const chevron = this.element(test.buttonEl, "span", "cmt-chevron"); setIcon(chevron, "chevron-right");
     let previous = "";
     this.statusUpdater = () => {
       const s = this.host.snapshot, copy = statusCopy(s);
-      const key = JSON.stringify([s, this.host.settings.autoConnect, this.host.settings.chatgptLinked]);
+      const key = JSON.stringify([s, this.facts, this.busy]);
       if (previous === key) return;
       previous = key;
-      title.textContent = copy.title; detail.textContent = copy.text;
-      line.dataset.state = s.state; action.setButtonText(copy.action);
-      this.disable(action, s.state === "stopping");
+      const health = connectionChecks(s,this.facts);rows[0](health.tunnel);rows[1](health.server);
+      const repair = needsLocalRepair(s,this.facts);
+      title.textContent = repair ? "Servidor MCP no disponible" : copy.title;
+      detail.textContent = repair ? "El servidor de esta bóveda necesita atención." : copy.text;detail.hidden = s.state === "connected" && !repair;
+      problem.hidden = !["error","waiting-for-obsidian","existing-runtime"].includes(s.state);report.textContent = s.detail;
+      action.setButtonText(this.busy && repair ? "Reparando…" : repair ? "Reparar conexión" : copy.action);
+      this.disable(action, s.state === "stopping" || (this.busy && repair));
       retryInfo.hidden = !s.retryAt; retryInfo.textContent = s.retryAt ? "Se reintentará automáticamente. También puedes reintentar ahora." : "";
     }; this.statusUpdater();
   }
@@ -459,7 +489,7 @@ export class ConnectionPopover {
   private async run(message: string, action: (live: () => boolean) => Promise<void>): Promise<void> {
     if (this.busy || !this.root) return;
     const life = this.life; const live = (): boolean => this.root !== null && life === this.life;
-    this.busy = true; this.syncControls(); this.showFeedback(message, false);
+    this.busy = true; this.statusUpdater?.(); this.syncControls(); this.showFeedback(message, false);
     try {
       await action(live);
       if (live() && message && this.feedback?.textContent === message) this.showFeedback("", false);

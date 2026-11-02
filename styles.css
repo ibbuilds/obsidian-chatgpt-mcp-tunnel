@@ -1,5 +1,10 @@
 /* Layout and state polish only. Native Obsidian colors, typography and controls. */
-.cmt-status { display: inline-flex; align-items: center; flex:0 0 auto; white-space:nowrap; order: 1000; cursor: var(--cursor-link); }
+.cmt-status { display: inline-flex; align-items: center; gap:var(--size-2-2); flex:0 0 auto; white-space:nowrap; order: 1000; cursor: var(--cursor-link); }
+.cmt-status-icon { display:inline-flex; width:var(--icon-xs); height:var(--icon-xs); color:var(--text-muted); }
+.cmt-status-icon svg { width:100%; height:100%; }
+.cmt-status[data-tone="ok"] .cmt-status-icon { color:var(--text-success); }
+.cmt-status[data-tone="warning"] .cmt-status-icon { color:var(--text-warning,var(--text-muted)); }
+.cmt-status[data-tone="error"] .cmt-status-icon { color:var(--text-error); }
 .cmt-status:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:2px; border-radius:var(--radius-s); }
 .cmt-popover {
   position: fixed; inset: auto; margin: 0; padding: 0;
@@ -34,10 +39,15 @@
 .cmt-step { color:var(--text-muted); font-size:var(--font-ui-smaller); margin:0 0 var(--size-4-2); }
 .cmt-popover .cmt-title { margin: 0 0 var(--size-4-2); font-size: var(--font-ui-medium); line-height: 1.35; font-weight: var(--font-semibold); }
 .cmt-popover .cmt-description { margin: 0 0 var(--size-4-4); color: var(--text-muted); font-size: var(--font-ui-small); overflow-wrap: anywhere; }
-.cmt-source-line { display:flex; align-items:center; justify-content:space-between; gap:var(--size-4-3); }
-.cmt-source-line strong { font-size:var(--font-ui-small); font-weight:var(--font-medium); }
-.cmt-source-line .cmt-source-status { color:var(--text-muted); font-size:var(--font-ui-smaller); font-weight:400; margin:0; }
-.cmt-source-line[data-state="error"] .cmt-source-status { color:var(--text-error); }
+.cmt-home-state { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.cmt-essential-checks { margin:0 0 var(--size-4-3); }
+.cmt-essential-checks .cmt-check-row { padding:var(--size-4-1) 0; }
+.cmt-check-value { color:var(--text-muted); font-size:var(--font-ui-smaller); text-align:right; }
+.cmt-check-row[data-tone="ok"] .cmt-check { color:var(--text-success); }
+.cmt-check-row[data-tone="warning"] .cmt-check, .cmt-check-row[data-tone="warning"] .cmt-check-value { color:var(--text-warning,var(--text-muted)); }
+.cmt-check-row[data-tone="error"] .cmt-check, .cmt-check-row[data-tone="error"] .cmt-check-value { color:var(--text-error); }
+.cmt-problem { margin:0 0 var(--size-4-3); }
+.cmt-problem summary { cursor:var(--cursor-link); color:var(--text-muted); font-size:var(--font-ui-smaller); }
 .cmt-popover[data-screen="home"] .cmt-description { margin:var(--size-4-2) 0 var(--size-4-4); }
 .cmt-popover[data-screen="home"] .cmt-actions { margin-top:0; }
 .cmt-popover .cmt-nav { width:calc(100% + 8px); margin:var(--size-4-4) -4px -4px; padding:var(--size-4-2) var(--size-4-1); height:auto; display:flex; justify-content:space-between; gap:var(--size-4-2); border:0; border-top:var(--border-width,1px) solid var(--background-modifier-border); border-radius:0; box-shadow:none; background:transparent; text-align:left; }
