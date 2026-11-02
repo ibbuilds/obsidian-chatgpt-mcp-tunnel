@@ -50,7 +50,7 @@ export class ConnectionPopover {
     const root = this.doc.createElement("div");
     root.className = "cmt-popover"; root.id = `cmt-popover-${++nextId}`;
     root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "false");
-    root.setAttribute("aria-label", "ChatGPT MCP Tunnel"); root.tabIndex = -1;
+    root.setAttribute("aria-label", "Conexión con ChatGPT"); root.tabIndex = -1;
     this.root = root; root.style.visibility = "hidden"; this.doc.body.appendChild(root);
     if (typeof root.showPopover === "function") {
       root.setAttribute("popover", "manual"); root.showPopover();
@@ -220,7 +220,7 @@ export class ConnectionPopover {
       this.iconButton(header, "arrow-left", "Volver", () => this.go(this.screen === "settings" ? this.returnScreen : this.screen === "client" ? this.clientBack! : this.screen === "chatgpt" ? (this.host.settings.chatgptLinked ? "home" : "account") : this.accountBack, true));
     }
     const brand = this.element(header, "div", "cmt-brand");
-    this.element(brand, "strong", "", this.screen === "settings" ? "Opciones" : "ChatGPT").tabIndex = -1;
+    this.element(brand, "strong", "", this.screen === "settings" ? "Opciones" : "Conexión con ChatGPT").tabIndex = -1;
     if (this.screen !== "settings" && this.screen !== "loading") {
       this.iconButton(header, "settings-2", "Opciones", () => { this.returnScreen = this.screen; this.go("settings", true); });
     }

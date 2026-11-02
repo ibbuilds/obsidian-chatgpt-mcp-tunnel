@@ -23,7 +23,6 @@
 .cmt-header {
   display: flex; align-items: center; gap: var(--size-4-1);
   padding: var(--size-4-2) var(--size-4-3);
-  border-bottom: var(--border-width, 1px) solid var(--background-modifier-border);
 }
 .cmt-brand { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--size-2-1); }
 .cmt-brand strong { font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
@@ -50,7 +49,7 @@
 .cmt-problem summary { cursor:var(--cursor-link); color:var(--text-muted); font-size:var(--font-ui-smaller); }
 .cmt-popover[data-screen="home"] .cmt-description { margin:var(--size-4-2) 0 var(--size-4-4); }
 .cmt-popover[data-screen="home"] .cmt-actions { margin-top:0; }
-.cmt-popover .cmt-nav { width:calc(100% + 8px); margin:var(--size-4-4) -4px -4px; padding:var(--size-4-2) var(--size-4-1); height:auto; display:flex; justify-content:space-between; gap:var(--size-4-2); border:0; border-top:var(--border-width,1px) solid var(--background-modifier-border); border-radius:0; box-shadow:none; background:transparent; text-align:left; }
+.cmt-popover .cmt-nav { width:calc(100% + 8px); margin:var(--size-4-4) -4px -4px; padding:var(--size-4-2) var(--size-4-1); height:auto; display:flex; justify-content:space-between; gap:var(--size-4-2); border:0; border-radius:0; box-shadow:none; background:transparent; text-align:left; }
 .cmt-popover .cmt-nav:hover { background:var(--background-modifier-hover); border-radius:var(--radius-s); }
 .cmt-chevron { display:flex; color:var(--text-muted); }
 .cmt-chevron svg { width:var(--icon-xs); height:var(--icon-xs); }
