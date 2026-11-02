@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { isCompleteInstallation, validateClientExecutable } from "./binaries";
 import { downloadVerifiedZip, readGithubJson } from "./network";
 import { RELEASES_API, selectWindowsRelease, type GithubRelease } from "./release";
-import { localDataDirectory, runPowerShell } from "./windows";
+import { runPowerShell } from "./windows";
 
 const EXTRACT_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -34,11 +34,13 @@ async function findExecutable(directory: string, depth = 0): Promise<string | nu
 
 /**
  * Explicit, verified installation. The complete release payload is kept
- * together and installed atomically within the user-local app directory.
+ * together and installed atomically within the plugin's managed client folder.
  */
 export async function installOfficialClient(
   onProgress: (state: InstallProgress) => void = () => undefined,
+  installRoot: string,
 ): Promise<string> {
+  if (!isAbsolute(installRoot)) throw new Error("Select an absolute plugin client directory.");
   if (process.platform !== "win32") throw new Error("Windows is required.");
   const arch = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "amd64" : null;
   if (!arch) throw new Error("Unsupported Windows processor.");
@@ -47,13 +49,12 @@ export async function installOfficialClient(
   const release = selectWindowsRelease((await readGithubJson(RELEASES_API)) as GithubRelease, arch);
   // Digest-scoped directories don't overwrite an already running client or old incomplete installs.
   const destinationDir = join(
-    localDataDirectory(), "client", release.version, release.sha256.slice(0, 12),
+    installRoot, release.version, release.sha256.slice(0, 12),
   );
   const destination = join(destinationDir, "tunnel-client.exe");
   if (await isCompleteInstallation(destination)) return destination;
 
   const temp = await mkdtemp(join(tmpdir(), "chatgpt-mcp-tunnel-"));
-  const installRoot = join(localDataDirectory(), "client");
   const staging = join(installRoot, ".install-" + randomUUID());
 
   try {

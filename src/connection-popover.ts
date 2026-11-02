@@ -2,13 +2,7 @@ import { ButtonComponent, TextComponent, ToggleComponent, setIcon } from "obsidi
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
 import { firstScreen, popoverPosition, statusCopy, type Screen, type SetupFacts } from "./ui-model";
 import type { PopoverHost } from "./popover-host";
-
-const URLS = {
-  tunnels: "https://platform.openai.com/settings/organization/tunnels",
-  keys: "https://platform.openai.com/settings/organization/api-keys",
-  chatgpt: "https://chatgpt.com/#settings/Connectors",
-  vault: "obsidian://show-plugin?id=vault-as-mcp",
-};
+import { SETUP_URLS as URLS, CHATGPT_TEST_PROMPT } from "./setup-guide";
 let nextId = 0;
 
 /** Click-open, non-modal surface. Keep the editor usable and active forms intact. */
@@ -231,27 +225,38 @@ export class ConnectionPopover {
     this.syncControls(); this.schedulePosition();
   }
   private renderClient(): void {
-    this.heading(1, "Connect this vault", "Use the OpenAI client you already have, or install it here.");
+    this.heading(1, "Connect this vault", "Set up the local connection automatically. We’ll find or install the client and start Vault as MCP.");
     const checks = this.element(this.body!, "div", "cmt-checks");
-    this.row(checks, "Vault as MCP", this.facts.vault === "running" ? "Running" : this.facts.vault === "authentication" ? "Token needed" : "Not running", this.facts.vault === "running");
+    this.row(checks, "Vault as MCP", this.facts.vault === "running" ? "Running" : this.facts.vault === "authentication" ? "Token needed" : this.facts.vault === "missing" ? "Not installed" : this.facts.vault === "missing-tools" ? "Tools missing" : this.facts.vault === "unexpected-server" ? "Check endpoint" : "Not running", this.facts.vault === "running");
     this.row(checks, "OpenAI client", this.facts.client ? "Selected" : "Not selected", this.facts.client);
     if (this.facts.vault !== "running") {
       const help = this.element(this.body!, "p", "cmt-help");
       if (this.facts.vault === "authentication") {
         help.textContent = "Add the local bearer token in connection settings.";
-      } else { help.textContent = "Start the local server first. "; this.link(help, "Open Vault as MCP ↗", URLS.vault); }
+      } else if (this.facts.vault === "missing") {
+        help.textContent = "Install and enable the vault plugin first. "; this.link(help, "Install Vault as MCP ↗", URLS.vault);
+      } else {
+        help.textContent = this.facts.vault === "missing-tools" ? "The server is missing its note tools. Update or restart Vault as MCP. " : "We’ll try to start the local server for you. ";
+        this.link(help, "Open Vault as MCP ↗", URLS.vault);
+      }
     }
     const actions = this.element(this.body!, "div", "cmt-actions");
     if (this.host.installing) {
       this.disable(this.button(actions, "Installing client…", () => undefined, "primary"), true);
       this.element(actions, "p", "cmt-help", "You can close this popover. Installation will continue."); return;
     }
+    if (!this.facts.client || this.facts.vault !== "running") {
+      this.button(actions, "Set up local connection", () => void this.run("Preparing your local connection…", async (live) => {
+        await this.host.prepareLocal(message => { if (live()) this.showFeedback(message, false); });
+        if (live()) await this.load();
+      }), "primary");
+    }
     if (!this.facts.client) {
       this.button(actions, "Find existing client", () => void this.run("Looking in common folders…", async (live) => {
         const found = await this.host.findClient(); const facts = await this.host.inspect();
         if (!live()) return; this.facts = facts; this.render();
         if (!found) this.showFeedback("Not found in common folders. Choose tunnel-client.exe from its extracted folder.", false);
-      }), "primary");
+      }), "quiet");
       const alternatives = this.element(actions, "div", "cmt-secondary-actions");
       this.button(alternatives, "Choose file", () => void this.run("Select tunnel-client.exe…", async (live) => {
         const chosen = await this.host.chooseClient(this.doc);
@@ -261,7 +266,7 @@ export class ConnectionPopover {
         await this.host.installClient((message) => { if (live()) this.showFeedback(message, false); });
         const facts = await this.host.inspect(); if (live()) { this.facts = facts; this.render(); }
       }), "quiet");
-      this.element(actions, "p", "cmt-footnote", "Choose tunnel-client.exe, not cloudflared.exe.");
+      this.element(actions, "p", "cmt-footnote", "Choose tunnel-client.exe, not cloudflared.exe. The client is kept in this plugin’s client folder; keys stay encrypted outside the vault.");
     } else {
       this.button(actions, this.facts.vault === "running" ? "Continue" : "Check again", () => {
         if (this.facts.vault !== "running") {
@@ -274,7 +279,7 @@ export class ConnectionPopover {
     }
   }
   private renderAccount(): void {
-    this.heading(2, "Your OpenAI connection", "Reuse your existing Tunnel ID and runtime API key.");
+    this.heading(2, "Your OpenAI connection", "Open each page below, create or reuse your connection, and paste the two values here once.");
     const validate = (): void => {
       if (!this.submit) return;
       const needsKey = !this.facts.key || this.replaceKey;
@@ -282,7 +287,8 @@ export class ConnectionPopover {
     };
     const id = this.field(this.body!, "Tunnel ID", this.draftId, "tunnel_…", (value) => { this.draftId = value.trim(); validate(); });
     id.inputEl.addEventListener("blur", () => id.inputEl.setAttribute("aria-invalid", String(!!this.draftId && !isValidTunnelId(this.draftId))));
-    const idHelp = this.element(this.body!, "p", "cmt-help"); this.link(idHelp, "Get a tunnel ID ↗", URLS.tunnels);
+    const idHelp = this.element(this.body!, "p", "cmt-help"); this.link(idHelp, "1. Create or open a tunnel ↗", URLS.tunnels);
+    idHelp.appendChild(this.doc.createTextNode(" · Associate it with the ChatGPT workspace you’ll use, then copy its Tunnel ID."));
     if (this.facts.key && !this.replaceKey) {
       const saved = this.element(this.body!, "div", "cmt-saved");
       this.element(saved, "span", "", "API key saved securely");
@@ -291,7 +297,9 @@ export class ConnectionPopover {
       this.field(this.body!, "Runtime API key", this.draftKey, "Paste key once", (value) => { this.draftKey = value; validate(); }, true);
       if (this.facts.key) this.button(this.body!, "Keep saved key", () => { this.replaceKey = false; this.draftKey = ""; this.render(); }, "quiet");
     }
-    const help = this.element(this.body!, "p", "cmt-help", "Permissions: Tunnels → Read + Use. "); this.link(help, "Create key ↗", URLS.keys);
+    const help = this.element(this.body!, "p", "cmt-help"); this.link(help, "2. Create a runtime key ↗", URLS.keys);
+    help.appendChild(this.doc.createTextNode(" · Use the same Platform organization. Choose Restricted permissions, then Tunnels → Read + Use. Paste the key before closing that page."));
+    const guide = this.element(this.body!, "p", "cmt-help"); this.link(guide, "OpenAI setup guide ↗", URLS.guide);
     const actions = this.element(this.body!, "div", "cmt-actions");
     this.submit = this.button(actions, "Save & connect", () => void this.run("Saving connection…", async (live) => {
       const id = this.draftId, key = this.replaceKey || !this.facts.key ? this.draftKey : "";
@@ -308,7 +316,7 @@ export class ConnectionPopover {
     this.element(actions, "p", "cmt-footnote", "Encrypted by Windows. Never stored in your vault.");
   }
   private renderChatgpt(): void {
-    this.heading(3, "Finish in ChatGPT", "Add an MCP connection, choose Tunnel, and use this ID.");
+    this.heading(3, "Finish in ChatGPT", "Open Plugins → + → Add custom MCP server. Name it Obsidian, choose Tunnel, and select or paste this ID.");
     const copy = this.element(this.body!, "div", "cmt-copy-row");
     this.element(copy, "code", "", this.host.settings.tunnelId);
     this.iconButton(copy, "copy", "Copy Tunnel ID", () => void this.run("", async (live) => {
@@ -318,6 +326,15 @@ export class ConnectionPopover {
     const status = this.element(this.body!, "p", "cmt-help"); status.setAttribute("role", "status");
     const actions = this.element(this.body!, "div", "cmt-actions");
     this.button(actions, "Open ChatGPT ↗", () => this.openPage(URLS.chatgpt), "primary");
+    this.element(actions, "p", "cmt-help", "For this local connection, choose No authentication; the bridge handles the local token. Create the plugin, install it, then open a new Chat and select @Obsidian.");
+    this.button(actions, "Copy test prompt", () => void this.run("", async (live) => {
+      await this.win.navigator.clipboard.writeText(CHATGPT_TEST_PROMPT);
+      if (live()) this.showFeedback("Test prompt copied. Paste it in ChatGPT Chat to check reading without changing notes.", false);
+    }), "quiet");
+    const troubleshooting = this.element(actions, "details", "cmt-advanced");
+    this.element(troubleshooting, "summary", "", "Tunnel missing in ChatGPT?");
+    this.element(troubleshooting, "p", "cmt-help", "Use the same account and ChatGPT workspace associated with this tunnel. Your runtime key and account need Tunnels → Read + Use. Keep Obsidian open while adding and using the plugin.");
+    this.link(troubleshooting, "Review tunnel associations ↗", URLS.tunnels);
     const retry = this.button(actions, "Connect tunnel", () => {
       const s = this.host.snapshot;
       if (s.managed || s.state === "starting" || s.state === "connecting") this.host.disconnect();
@@ -327,9 +344,10 @@ export class ConnectionPopover {
     this.button(actions, "I've already added this tunnel", () => void this.run("", async (live) => {
       await this.host.acknowledgeChatgpt(); if (live()) this.go("home", true);
     }), "quiet");
+    this.element(actions, "p", "cmt-footnote", "This button remembers your setup. Only a successful tool call in ChatGPT confirms that ChatGPT connection.");
     this.statusUpdater = () => {
       const s = this.host.snapshot, ready = s.state === "connected";
-      status.textContent = ready ? "Local tunnel ready. You can now add it in ChatGPT." : s.detail;
+      status.textContent = ready ? "Local tunnel and MCP server ready. Add the plugin in ChatGPT, then run the test prompt." : s.detail;
       status.classList.toggle("is-error", s.state === "error");
       // Checking ChatGPT settings must remain available even when the local
       // tunnel is temporarily offline; connector registration still needs readiness.
@@ -357,6 +375,11 @@ export class ConnectionPopover {
     }, "primary");
     action.buttonEl.dataset.allowBusy = "true";
     const edit = this.button(actions, "Review connection details", () => { this.accountBack = "home"; this.go("account", true); }, "quiet");
+    this.button(actions, "Repair local connection", () => void this.run("Checking the local connection…", async (live) => {
+      await this.host.prepareLocal(message => { if (live()) this.showFeedback(message, false); });
+      if (live()) await this.load();
+    }), "quiet");
+    this.button(actions, "ChatGPT setup & test", () => this.go("chatgpt", true), "quiet");
     const footer = this.element(actions, "p", "cmt-footnote"); this.link(footer, "Open ChatGPT ↗", URLS.chatgpt);
     let previous = "";
     this.statusUpdater = () => {
@@ -372,6 +395,8 @@ export class ConnectionPopover {
       retryInfo.hidden = !s.retryAt; retryInfo.textContent = s.retryAt ? "Automatic retry scheduled. You can also retry now." : "";
       checks.replaceChildren();
       this.row(checks, "Local tunnel", s.state === "connected" ? "Ready" : s.state === "stopping" ? "Stopping" : s.managed ? "Starting" : "Stopped", s.state === "connected");
+      this.row(checks, "MCP note tools", s.state === "connected" && this.facts.toolCount ? `${this.facts.toolCount} available` : "Check local setup", s.state === "connected" && !!this.facts.toolCount);
+      this.row(checks, "ChatGPT setup", this.host.settings.chatgptLinked ? "Marked added by you" : "Needs setup", !!this.host.settings.chatgptLinked);
       this.row(checks, "Start with Obsidian", this.host.settings.autoConnect ? "On" : "Off", this.host.settings.autoConnect);
     }; this.statusUpdater();
   }
@@ -389,6 +414,11 @@ export class ConnectionPopover {
     this.button(links, "Change tunnel client", () => this.go("client", true), "quiet");
     const advanced = this.element(this.body!, "details", "cmt-advanced");
     this.element(advanced, "summary", "", "Local MCP settings");
+    this.element(advanced, "p", "cmt-help", this.host.settings.autoDetectLocal ? "Port and token are detected from Vault as MCP. Saving values below switches to manual settings." : "Using manual settings. You can restore automatic port and token detection.");
+    this.button(advanced, "Detect local settings automatically", () => void this.run("Detecting Vault as MCP…", async (live) => {
+      await this.host.useAutomaticLocal();
+      if (live()) { this.draftEndpoint = this.host.settings.mcpUrl; this.facts = await this.host.inspect(); if (live()) this.render(); }
+    }), "quiet");
     const endpoint = this.field(advanced, "Local endpoint", this.draftEndpoint, "http://127.0.0.1:8765/mcp", (value) => { this.draftEndpoint = value; });
     const token = this.field(advanced, "Local bearer token (optional)", this.draftToken, this.facts.token ? "Saved — leave blank to keep" : "Only if enabled in Vault as MCP", (value) => { this.draftToken = value; }, true);
     const save = this.button(advanced, "Save local settings", () => void this.run("Saving local settings…", async (live) => {

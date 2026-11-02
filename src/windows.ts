@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 
 const SAVE_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -125,8 +126,39 @@ export class WindowsSecretStore {
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encrypted)) {
       throw new Error("Windows did not return an encrypted credential.");
     }
-    await mkdir(localDataDirectory(), { recursive: true });
-    await writeFile(path, encrypted, { mode: 0o600 });
+    await this.writeEncrypted(path, encrypted);
+  }
+
+  private async writeEncrypted(path: string, encrypted: string): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = path + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporary, encrypted, { mode: 0o600, flag: "wx" });
+      await rename(temporary, path);
+    } finally { await rm(temporary, { force: true }); }
+  }
+
+  private async transaction(path: string, save: () => Promise<void>, commit: () => Promise<void>): Promise<void> {
+    let previous: string | undefined;
+    try { previous = await readFile(path, "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Cannot access the encrypted credential."); }
+    await save();
+    try { await commit(); }
+    catch (error) {
+      try {
+        if (previous !== undefined) await this.writeEncrypted(path, previous);
+        else await rm(path, { force: true });
+      } catch { throw new Error("Could not restore the saved credential after a settings error. Re-enter it before reconnecting."); }
+      throw error;
+    }
+  }
+
+  async saveKeyAndCommit(value: string, commit: () => Promise<void>): Promise<void> {
+    await this.transaction(this.runtimeKeyPath, () => this.saveKey(value), commit);
+  }
+
+  async saveMcpTokenAndCommit(value: string, commit: () => Promise<void>): Promise<void> {
+    await this.transaction(this.mcpTokenPath, () => this.saveMcpToken(value), commit);
   }
 
   private async readSecret(path: string): Promise<string> {

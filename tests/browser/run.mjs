@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
 const candidates = process.platform === "win32"
-  ? [process.env.CHROME_PATH, "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"]
+  ? [process.env.CHROME_PATH, "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"]
   : [process.env.CHROME_PATH, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 const chrome = candidates.find((path) => path && existsSync(path));
 if (!chrome) throw new Error("Set CHROME_PATH to a Chromium/Chrome executable to run the UI tests.");

@@ -20,6 +20,7 @@
     ok(document.querySelector("main").getBoundingClientRect().width === before, "Editor width never changes");
     ok(popup.getBoundingClientRect().bottom <= trigger.getBoundingClientRect().top, "Popover sits above the status indicator");
     ok(popup.textContent.includes("tunnel-client.exe, not cloudflared.exe"), "File choice is explained without another tutorial");
+    ok(!!button("Set up local connection"), "First-run setup offers one automatic local preparation action");
     button("Find existing client").click(); await settle(); button("Continue").click(); await settle();
     ok(document.querySelector(".cmt-popover").dataset.screen === "account", "Account details follow the selected client");
     ok(button("Save & connect").disabled, "Incomplete account details cannot be submitted");
@@ -40,6 +41,9 @@
     window.failSave = false;
     secret.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await settle();
     ok(document.querySelector(".cmt-popover").dataset.screen === "chatgpt", "Enter saves once and proceeds to ChatGPT registration");
+    ok(popup.querySelectorAll('a[href="https://platform.openai.com/settings/organization/api-keys"]').length === 0, "Account secrets are removed when proceeding to registration");
+    ok(document.querySelector(".cmt-popover").textContent.includes("install it"), "ChatGPT registration explains installation before testing");
+    ok(!!button("Copy test prompt"), "Registration provides a read-only end-to-end test prompt");
     button("I've already added this tunnel").click(); await settle();
     ok(document.querySelector(".cmt-title").textContent === "Tunnel ready", "Completed setup opens the compact daily view");
     button("Disconnect").click(); await settle();
@@ -100,6 +104,13 @@
     button("Cancel").click(); connecting.resolve(); await settle();
     ok(document.querySelector(".cmt-title").textContent === "Tunnel stopped", "Cancellation cannot be undone by late UI work");
     host.connect = connect; button("Close").click();
+
+    window.reset("client"); trigger.click(); await settle();
+    button("Set up local connection").click(); await settle();
+    ok(document.querySelector(".cmt-popover").dataset.screen === "account", "Automatic local setup proceeds directly to account setup");
+    ok(!!document.querySelector('a[href="https://platform.openai.com/settings/organization/tunnels"]'), "Account setup links directly to tunnel settings");
+    ok(!!document.querySelector('a[href="https://platform.openai.com/settings/organization/api-keys"]'), "Account setup links directly to runtime keys");
+    button("Close").click();
 
     window.reset("account"); trigger.click(); await settle();
     const shown = type("Runtime API key", "sensitive-draft-for-removal"); button("Show runtime api key").click();

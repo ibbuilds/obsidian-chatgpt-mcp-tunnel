@@ -1,6 +1,6 @@
 # ChatGPT MCP Tunnel
 
-A small status-bar popover for connecting **Obsidian to ChatGPT** through the official OpenAI tunnel client and [Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp). Windows desktop only.
+A guided status-bar popover for connecting **Obsidian to ChatGPT Chat** through the official OpenAI tunnel client and [Vault as MCP](https://github.com/ebullient/obsidian-vault-mcp). Windows desktop only. The bridge transports MCP operations; it does not make model-inference API calls.
 
 ## Open, use, dismiss
 
@@ -12,17 +12,34 @@ There is **no sidebar, no modal, no dimming and no editor resizing**. The popove
 
 The popover shows the first incomplete step rather than an entire settings form:
 
-1. **Local connection.** Check Vault as MCP and find the OpenAI client. Use **Find existing client**, **Choose file**, or **Install client**. An unselected path is not described as an uninstalled program.
-2. **OpenAI details.** Enter your existing Tunnel ID and runtime API key. Small links open the correct Platform pages. Use a restricted key with **Tunnels: Read + Use**; click **Save & connect**.
-3. **ChatGPT.** Once the local tunnel is ready, open ChatGPT, add an MCP connection with the **Tunnel** option and choose the same ID. Copy is built in. Already added it? Acknowledge it once to skip this screen next time.
+1. **Local connection.** Choose **Set up local connection**. The plugin enables an installed Vault as MCP dependency, starts its server, detects its port and optional local token, finds an existing OpenAI client or installs the official bundle, and checks the actual MCP note tools. If Vault as MCP is missing, its install page is linked directly. Manual client selection remains available.
+2. **OpenAI details.** The assistant links directly to Platform tunnel settings and runtime keys. Create or reuse a tunnel associated with your intended ChatGPT workspace. Create a restricted runtime key in the same Platform organization with **Tunnels: Read + Use**. Paste the Tunnel ID and key once, then choose **Save & connect**. Account sign-in, key creation, permission grants and consent remain your actions.
+3. **ChatGPT.** Open **Plugins → + → Add custom MCP server**, choose **Tunnel**, and select the same ID. For this local bridge choose **No authentication**; local bearer authentication is handled by the tunnel client. Create and install the plugin, open a new **Chat**, select **@Obsidian**, and use **Copy test prompt** to verify reading without modifying notes. If the tunnel is missing, review the linked workspace-association and permission guidance.
 
 The ChatGPT acknowledgement is **your confirmation**, not a remote test of tool discovery. The plugin cannot create keys, grant account permissions or authorize a ChatGPT connector for you.
 
-Vault as MCP still owns the local server, automatic server startup, note access and permissions. This plugin only installs/configures/runs the outbound tunnel client. No second MCP server is created.
+Vault as MCP owns the local server, note access and permissions. A guarded adapter can enable/start that dependency and read its connection details; it never changes ACLs. Background recovery starts an already-enabled dependency but respects a deliberately disabled plugin. No second MCP server is created.
+
+## Client location and upgrades
+
+The managed executables live next to this plugin's sources and settings:
+
+```text
+<plugin-directory>/client/
+  <release-version>/<archive-digest>/tunnel-client.exe
+  <release-version>/<archive-digest>/cloudflared.exe
+  imported/<bundle-digest>/...   # an existing selected installation
+```
+
+The `client/` directory is ignored by Git. Existing selected clients and older `%LOCALAPPDATA%\ObsidianMcpTunnel\client` installs are copied into this managed directory on startup. Only the two required executables are imported; original files are retained. The configured path is updated after a successful copy. Downloads still verify the published release size and SHA-256 before extraction.
+
+**Credentials stay outside the vault**, encrypted with Windows DPAPI in `%LOCALAPPDATA%\ObsidianMcpTunnel`. Copying or syncing the plugin does not transfer usable credentials to another Windows account. The client folder can be excluded from vault synchronization and restored through setup when needed.
 
 ## Daily use
 
-After setup, the popover shows **Tunnel ready**, **Connecting**, **Stopped**, or a specific error, with a single main Connect/Disconnect action. Closing the popover does not stop the tunnel.
+After setup, the popover shows **Tunnel ready**, **Connecting**, **Stopped**, or a specific error, with a main Connect/Disconnect action. **Start with Obsidian** starts the configured tunnel automatically. A stopped, enabled Vault as MCP server is started when needed. Closing the popover does not stop the tunnel.
+
+Readiness checks both the tunnel and the local MCP server. If the server stops or rejects its token, the UI shows the local problem instead of leaving a misleading ready state. **Repair local connection** re-detects the port/token, checks the note tools, and reconnects when configured. Manual local settings are preserved until you select automatic detection again.
 
 The settings icon contains **Start with Obsidian**, editing the connection details, selecting another client, optional local MCP authentication, and local diagnostics. Sensitive drafts stay in memory and are cleared on dismissal. Periodic status updates do not rerender active forms or erase typed text.
 
@@ -84,12 +101,22 @@ v0.8.2 fixes the confirmed exit-code-1 startup failure with official client v0.0
 - Startup credentials stay encrypted outside the vault. Diagnostic output is bounded in memory, classified into safe messages, and never displayed or persisted verbatim.
 - The ChatGPT account settings link remains accessible even when the local tunnel is temporarily offline.
 
+## What's improved in v0.9.0
+
+- One-action local setup, dependency startup, automatic local port/token detection, and a repair action.
+- Plugin-local client installation and safe migration of existing executable bundles.
+- Guided Platform and ChatGPT setup with direct links, workspace association guidance, plugin installation instructions, and a read-only test prompt.
+- Real MCP tool discovery, JSON and SSE response support, session cleanup, absolute deadlines, and truncated-response recovery.
+- Local-server health monitoring in addition to OpenAI tunnel readiness.
+- Atomic encrypted credential writes and rollback when settings cannot be saved.
+- Cancelled preparation and settings saves cannot resurrect a disconnected client; failed saves restore the prior connection where possible.
+
 ## Verification and limits
 
 v0.8.1 fixes source-build warnings: the Obsidian development SDK uses patched Moment 2.31.0, npm 12 approves only the pinned esbuild install script, and TypeScript sources have an explicit ES-module scope. The installed `main.js` remains CommonJS for Obsidian. CI also checks dependency audits and a clean Windows build with npm 12.
 
-- Unit tests cover step selection, state copy, small-window positioning, existing-client discovery, MCP identity checks and secret handling.
-- `npm run test:browser` runs the production popover code in Chromium with DOM-level Obsidian component doubles. It checks dismissal, no layout shift, focus, form retention, error recovery and normal connection controls. Set `CHROME_PATH` if Chrome is not in a standard location.
+- Unit tests cover step selection, state copy, positioning, executable migration, dependency startup, MCP identity/tool discovery, JSON/SSE/session behavior, connection cancellation, settings recovery and secret handling.
+- `npm run test:browser` runs the production popover code in Chromium with DOM-level Obsidian component doubles. It checks dismissal, no layout shift, focus, form retention, guided setup, error recovery and normal connection controls. Chrome and Windows Edge are discovered in standard locations; set `CHROME_PATH` to override.
 - Additional visual checks cover dark/light theme variables and 350–1200 px window widths.
 - Windows and Linux CI run the unit tests, TypeScript checks and production build. Linux CI also runs the browser interaction checks.
 

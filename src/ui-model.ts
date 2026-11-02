@@ -1,6 +1,6 @@
 import type { ConnectionSnapshot } from "./types";
 export type Screen = "loading" | "client" | "account" | "chatgpt" | "home" | "settings";
-export interface SetupFacts { client: boolean; key: boolean; vault: "running" | "stopped" | "missing" | "authentication"; token: boolean }
+export interface SetupFacts { client: boolean; key: boolean; vault: "running" | "stopped" | "missing" | "authentication" | "missing-tools" | "unexpected-server"; token: boolean; toolCount?: number; writable?: boolean }
 export function firstScreen(facts: SetupFacts, validId: boolean, linked: boolean): Screen {
   if (!facts.client || facts.vault !== "running") return "client";
   if (!facts.key || !validId) return "account";
@@ -8,10 +8,10 @@ export function firstScreen(facts: SetupFacts, validId: boolean, linked: boolean
 }
 export function statusCopy(snapshot: ConnectionSnapshot): { title: string; text: string; action: string } {
   switch (snapshot.state) {
-    case "connected": return { title: "Tunnel ready", text: "Ready for requests from your ChatGPT connection.", action: "Disconnect" };
+    case "connected": return { title: "Tunnel ready", text: "The tunnel and local MCP server are responding. Use the test prompt in ChatGPT to verify that connection.", action: "Disconnect" };
     case "starting": case "connecting": return { title: "Connecting…", text: snapshot.detail, action: "Cancel" };
     case "stopping": return { title: "Stopping…", text: "Waiting for the client to close safely.", action: "Stopping…" };
-    case "waiting-for-obsidian": return { title: "Waiting for Vault as MCP", text: "Enable its server. The connection will resume automatically.", action: "Try again" };
+    case "waiting-for-obsidian": return { title: "Waiting for Vault as MCP", text: snapshot.detail, action: snapshot.managed ? "Disconnect" : "Try again" };
     case "existing-runtime": return { title: "Another client is running", text: snapshot.detail, action: "Check again" };
     case "error": return { title: "Connection needs attention", text: snapshot.detail, action: snapshot.managed ? "Stop client" : "Retry" };
     case "not-configured": return { title: "Finish setup", text: snapshot.detail, action: "Continue setup" };

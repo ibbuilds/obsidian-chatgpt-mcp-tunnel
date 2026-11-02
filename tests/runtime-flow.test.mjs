@@ -39,6 +39,7 @@ function fixture(overrides = {}, preferences = {}) {
   const secrets = { hasKey: async () => true, readKey: async () => "sk-fake-key-for-test-only", hasMcpToken: async () => false, readMcpToken: async () => "local-test-token" };
   const services = {
     validate: async () => {}, probe: async () => "ready", portOpen: async () => false,
+    checkTools: overrides.checkTools ?? overrides.probe ?? (async () => "ready"),
     http: async url => url.port === "8080" ? null : health,
     launch: () => {
       const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.exitCode = null; child.signalCode = null;
@@ -201,5 +202,44 @@ test("simultaneous Connect actions never create overlapping tunnel processes", a
     f.manager.connectNow(),
   ]);
   assert.equal(f.children.length, 1);
+  await f.manager.disconnect(); f.manager.dispose();
+});
+
+test("starts a stopped local server automatically before launching the tunnel", async () => {
+  let running = false, starts = 0;
+  const f = fixture({ probe: async () => running ? "ready" : "unavailable", ensureLocalServer: async () => { starts++; running = true; } });
+  await f.manager.connectNow();
+  assert.equal(starts, 1); assert.equal(f.children.length, 1);
+  await f.manager.disconnect(); f.manager.dispose();
+});
+
+test("missing note tools block a misleadingly ready tunnel", async () => {
+  const f = fixture({ checkTools: async () => "missing-tools" });
+  await f.manager.connectNow();
+  assert.equal(f.children.length, 0); assert.equal(f.manager.snapshot.state, "error");
+  assert.match(f.manager.snapshot.detail, /note tools.*missing/);
+  assert.equal(f.manager.snapshot.retryAt, undefined); f.manager.dispose();
+});
+
+test("local server loss cannot remain ready and recovery reuses the owned tunnel", async () => {
+  let local = "ready";
+  const f = fixture({ probe: async () => local });
+  await f.manager.connectNow(); await f.manager.tick();
+  assert.equal(f.manager.snapshot.state, "connected");
+  local = "unavailable"; await f.manager.tick();
+  assert.equal(f.manager.snapshot.state, "waiting-for-obsidian");
+  assert.equal(f.manager.snapshot.managed, true);
+  local = "ready"; await f.manager.tick();
+  assert.equal(f.manager.snapshot.state, "connected"); assert.equal(f.children.length, 1);
+  await f.manager.disconnect(); f.manager.dispose();
+});
+
+test("a changed local token is visible even while the tunnel remains healthy", async () => {
+  let local = "ready";
+  const f = fixture({ probe: async () => local });
+  await f.manager.connectNow(); await f.manager.tick();
+  local = "authentication-required"; await f.manager.tick();
+  assert.equal(f.manager.snapshot.state, "waiting-for-obsidian");
+  assert.match(f.manager.snapshot.detail, /token/);
   await f.manager.disconnect(); f.manager.dispose();
 });
