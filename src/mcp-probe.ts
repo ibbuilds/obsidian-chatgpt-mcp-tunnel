@@ -82,7 +82,7 @@ export async function inspectVaultMcp(endpoint: string, token?: string, tools = 
   const url = parseLocalMcpEndpoint(endpoint);
   if (!url) return report("unexpected-server");
   const init = await rpc(url, "initialize", "chatgpt-mcp-tunnel-identity-check", {
-    protocolVersion: "2025-06-18", clientInfo: { name: "chatgpt-mcp-tunnel", version: "0.9.0" }, capabilities: {},
+    protocolVersion: "2025-06-18", clientInfo: { name: "chatgpt-mcp-tunnel", version: "0.9.1" }, capabilities: {},
   }, token);
   const result = init.body?.result;
   const protocol = typeof result?.protocolVersion === "string" && /^\d{4}-\d{2}-\d{2}$/.test(result.protocolVersion) ? result.protocolVersion : "2025-06-18";

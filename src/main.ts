@@ -1,4 +1,4 @@
-import { Notice, Plugin, PluginSettingTab, Setting, type App } from "obsidian";
+import { Notice, Plugin, PluginSettingTab, Setting, setIcon, type App } from "obsidian";
 import { join } from "node:path";
 import { keepClientNearPlugin, managedClientRoot } from "./client-storage";
 import { ConnectionPopover } from "./connection-popover";
@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS, normalizeSettings, type TunnelSettings } from "./type
 import { isValidTunnelId, parseLocalMcpEndpoint } from "./validation";
 import { localDataDirectory, WindowsSecretStore } from "./windows";
 import type { PopoverHost } from "./popover-host";
-import { statusCopy, type SetupFacts } from "./ui-model";
+import { statusCopy, connectionIndicator, type SetupFacts } from "./ui-model";
 
 const LEGACY_VIEW_TYPE = "chatgpt-mcp-tunnel-connection";
 
@@ -23,6 +23,7 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
   private popover: ConnectionPopover | null = null;
   private statusItem: HTMLElement | null = null;
   private statusLabel: HTMLElement | null = null;
+  private statusIcon: HTMLElement | null = null;
   private actions: Promise<unknown> = Promise.resolve();
   private installPromise: Promise<void> | null = null;
   private detectPromise: Promise<boolean> | null = null;
@@ -51,6 +52,7 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     this.statusItem.setAttribute("aria-haspopup", "dialog");
     this.statusItem.setAttribute("aria-expanded", "false");
     this.statusItem.tabIndex = 0;
+    this.statusIcon = this.statusItem.createSpan({cls:"cmt-status-icon",attr:{"aria-hidden":"true"}});
     this.statusLabel = this.statusItem.createSpan({ text: "ChatGPT" });
     this.registerDomEvent(this.statusItem, "click", () => this.togglePopover());
     this.registerDomEvent(this.statusItem, "keydown", (event) => {
@@ -98,7 +100,11 @@ export default class ChatGptMcpTunnel extends Plugin implements PopoverHost {
     const label = statusCopy(this.snapshot).title;
     if (this.statusLabel?.textContent !== "ChatGPT") this.statusLabel?.setText("ChatGPT");
     if (this.statusItem) {
-      if (this.statusItem.dataset.state !== state) this.statusItem.dataset.state = state;
+      if (this.statusItem.dataset.state !== state) {
+        this.statusItem.dataset.state = state;
+        const indicator = connectionIndicator(this.snapshot);this.statusItem.dataset.tone = indicator.tone;
+        if (this.statusIcon) setIcon(this.statusIcon,indicator.icon);
+      }
       const description = `ChatGPT. ${label}. Abrir conexión.`;
       if (this.statusItem.title !== description) this.statusItem.title = description;
       if (this.statusItem.getAttribute("aria-label") !== description) this.statusItem.setAttribute("aria-label", description);

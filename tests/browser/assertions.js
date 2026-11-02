@@ -46,22 +46,22 @@
     ok(document.querySelector(".cmt-popover").textContent.includes("Crea e instala el plugin"), "ChatGPT registration explains installation before testing");
     ok(!!button("Copiar prueba"), "Registration provides a read-only end-to-end test prompt");
     button("Ya lo añadí").click(); await settle();
-    ok(document.querySelector(".cmt-title").textContent === "Disponible", "Completed setup opens the compact daily view");
-    ok(!document.querySelector(".cmt-popover .cmt-checks"), "Daily view keeps diagnostics in Options");
+    ok(document.querySelector('[data-check="tunnel"] .cmt-check-value').textContent === "Listo", "Completed setup opens the compact daily view");
+    ok(document.querySelectorAll(".cmt-essential-checks .cmt-check-row").length === 2, "Daily view exposes the two essential checks");
     ok(document.querySelector(".cmt-popover").getBoundingClientRect().height < 280, "Daily view is a compact native utility");
     let idleMutations = 0;
     const observer = new MutationObserver(records => { idleMutations += records.length; });
     observer.observe(document.querySelector(".cmt-popover"), {subtree:true,attributes:true,childList:true,characterData:true});
     for (let i=0;i<5;i++) window.pop.updateConnection(); await settle(); observer.disconnect();
     ok(idleMutations === 0, "Unchanged connection updates leave the UI intact");
-    button("Probar en ChatGPT").click(); await settle();button("Volver").click();await settle();
+    button("Probar conexión").click(); await settle();button("Volver").click();await settle();
     ok(document.querySelector(".cmt-popover").dataset.screen === "home", "ChatGPT test returns to the daily view");
     const originalOpen=window.open;let opened="";window.open=url=>{opened=url;return null;};button("Abrir ChatGPT").click();window.open=originalOpen;
     ok(opened==="https://chatgpt.com/", "Ready connection opens ChatGPT directly");
     button("Opciones").click();button("Desconectar").click();await settle();button("Volver").click();await settle();
-    ok(document.querySelector(".cmt-title").textContent === "Desconectado", "Disconnect changes the host state");
+    ok(document.querySelector('[data-check="tunnel"] .cmt-check-value').textContent === "Desconectado", "Disconnect changes the host state");
     button("Conectar").click(); await settle();
-    ok(document.querySelector(".cmt-title").textContent === "Disponible", "Reconnect changes the host state");
+    ok(document.querySelector('[data-check="tunnel"] .cmt-check-value').textContent === "Listo", "Reconnect changes the host state");
 
     button("Opciones").click(); button("Datos de conexión").click();
     button("Cambiar").click(); type("Clave de OpenAI", "sk-replacement-draft-only");
@@ -114,7 +114,7 @@
     trigger.click(); await settle(); button("Conectar").click(); await settle();
     ok(button("Cancelar") && !button("Cancelar").disabled, "Cancel stays enabled during an asynchronous startup");
     button("Cancelar").click(); connecting.resolve(); await settle();
-    ok(document.querySelector(".cmt-title").textContent === "Desconectado", "Cancellation cannot be undone by late UI work");
+    ok(document.querySelector('[data-check="tunnel"] .cmt-check-value').textContent === "Desconectado", "Cancellation cannot be undone by late UI work");
     host.connect = connect; button("Cerrar").click();
 
     window.reset("client"); trigger.click(); await settle();
@@ -128,6 +128,27 @@
     const shown = type("Clave de OpenAI", "sensitive-draft-for-removal"); button("Mostrar clave de openai").click();
     button("Cerrar").click();
     ok(shown.value === "", "Dismissal clears secrets even while the input is revealed");
+    window.reset("home");window.facts.vault="stopped";
+    host.snapshot={state:"waiting-for-obsidian",detail:"The tunnel works but local MCP is unavailable",managed:true};
+    trigger.click();await settle();
+    ok(document.querySelector('.cmt-popover').dataset.screen==="home","A configured connection opens recovery rather than first-run setup");
+    ok(document.querySelector('[data-check="tunnel"] .cmt-check-value').textContent==="Listo"&&document.querySelector('[data-check="server"] .cmt-check-value').textContent==="No disponible","The first screen identifies which connection component failed");
+    document.querySelector('.cmt-problem').open=true;
+    ok(document.querySelector('.cmt-problem').textContent.includes('local MCP is unavailable'),"Failure detail is reachable without opening Options");
+    const originalPrepare=host.prepareLocal,repair=deferred();let repairs=0;
+    host.prepareLocal=async()=>{repairs++;await repair.promise;window.facts.vault="running";await host.connect();};
+    button("Reparar conexión").click();await settle();
+    ok(button("Reparando…").disabled,"Repair displays progress and prevents repeated submissions");button("Reparando…").click();
+    repair.resolve();await settle();await settle();
+    ok(repairs===1&&document.querySelector('[data-check="server"] .cmt-check-value').textContent==="Listo","One repair restores the visible local checks");
+    host.prepareLocal=originalPrepare;button("Cerrar").click();
+    window.reset("home");window.facts.vault="stopped";host.snapshot={state:"waiting-for-obsidian",detail:"Local MCP unavailable",managed:true};
+    trigger.click();await settle();const priorInspect=host.inspect,inspection=deferred();host.inspect=()=>inspection.promise;
+    host.snapshot={state:"connected",detail:"Recovered",managed:true};window.pop.updateConnection();
+    host.snapshot={state:"waiting-for-obsidian",detail:"Failed again",managed:true};window.pop.updateConnection();
+    inspection.resolve({client:true,key:true,vault:"running",token:false});await settle();
+    ok(document.querySelector('[data-check="server"] .cmt-check-value').textContent==="No disponible","An old successful inspection cannot overwrite a newer local failure");
+    host.inspect=priorInspect;button("Cerrar").click();
     out.dataset.status = "passed"; out.textContent = `${results.length} browser interaction checks passed.\n` + results.join("\n");
   } catch (error) { out.dataset.status = "failed"; out.textContent = error.stack || String(error); }
 })();
